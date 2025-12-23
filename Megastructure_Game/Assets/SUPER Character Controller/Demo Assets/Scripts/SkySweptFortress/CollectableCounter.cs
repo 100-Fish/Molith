@@ -11,23 +11,26 @@ public class CollectableCounter : MonoBehaviour
     public static CollectableCounter instance;
     public Text counter;
     public string format = "0000";
-    public int currentCount =0;
+    public int currentCount = 0;
     private void OnEnable()
     {
-       if(instance ==null) instance = this;
+        if (instance == null) instance = this;
     }
     private void Awake()
     {
         currentCount = 0;
-        if(audioSource==null)audioSource = GetComponent<AudioSource>();
+        if (audioSource == null) audioSource = GetComponent<AudioSource>();
     }
-    private void Update(){
+    private void Update()
+    {
         counter.text = currentCount.ToString(format);
     }
-    public void AddToCount(){
+    public void AddToCount()
+    {
         currentCount++;
-        if(audioSource && collectionSound){
-            audioSource.PlayOneShot(collectionSound,volume);
+        if (audioSource && collectionSound)
+        {
+            audioSource.PlayOneShot(collectionSound, volume);
         }
     }
 }

@@ -9,11 +9,13 @@ public class Collectable : MonoBehaviour, ICollectable
 {
     public UnityEvent OnCollect;
 
-    public virtual void Collect(){
+    public virtual void Collect()
+    {
         OnCollect.Invoke();
     }
 
-    public void DestroySelf(){
+    public void DestroySelf()
+    {
         Destroy(gameObject);
     }
 }

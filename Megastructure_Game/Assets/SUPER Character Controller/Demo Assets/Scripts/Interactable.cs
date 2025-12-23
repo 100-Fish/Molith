@@ -9,12 +9,14 @@ public class Interactable : MonoBehaviour, IInteractable
 {
     public UnityEvent OnInteract;
 
-    public bool Interact(){
+    public bool Interact()
+    {
         OnInteract.Invoke();
         return true;
     }
 
-    public void DestroySelf(){
+    public void DestroySelf()
+    {
         Destroy(gameObject);
     }
 }

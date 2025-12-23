@@ -11,21 +11,23 @@ public class CollectableGem : MonoBehaviour, ICollectable
     Vector3 startPos;
     private void Start()
     {
-        startPos =transform.position;
+        startPos = transform.position;
     }
     private void Update()
     {
-        transform.eulerAngles += Vector3.up*Time.deltaTime*30;
-        transform.position = startPos + Vector3.up * Mathf.Sin(Mathf.PI*Time.time)*0.1f;
+        transform.eulerAngles += Vector3.up * Time.deltaTime * 30;
+        transform.position = startPos + Vector3.up * Mathf.Sin(Mathf.PI * Time.time) * 0.1f;
     }
-    public void Collect(){
+    public void Collect()
+    {
         OnCollect.Invoke();
         CollectableCounter.instance.AddToCount();
         DestroySelf();
 
     }
 
-    public void DestroySelf(){
+    public void DestroySelf()
+    {
         Destroy(gameObject);
     }
 }
