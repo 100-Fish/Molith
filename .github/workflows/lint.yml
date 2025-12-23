@@ -16,10 +16,10 @@ jobs:
           dotnet-version: '6.0'
       
       - name: Restore
-        run: dotnet restore ./BubbleFish/BubbleFish.sln
+        run: dotnet restore ./Megastructure_Game/Megastructure_Game.sln
       
       - name: Format code
-        run: dotnet format ./BubbleFish/BubbleFish.sln
+        run: dotnet format ./Megastructure_Game/Megastructure_Game.sln
 
       - name: Commit changes
         run: |
