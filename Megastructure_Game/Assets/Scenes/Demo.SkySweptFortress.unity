@@ -1333,6 +1333,10 @@ PrefabInstance:
       value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4011650199783796440, guid: 8290bc46be1825d49932e2492480426b, type: 3}
+      propertyPath: enableCameraControl
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4011650199783796440, guid: 8290bc46be1825d49932e2492480426b, type: 3}
       propertyPath: enableStaminaSystem
       value: 0
       objectReference: {fileID: 0}
@@ -1410,24 +1414,12 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 4011650200241831704, guid: 8290bc46be1825d49932e2492480426b, type: 3}
       propertyPath: m_ClearFlags
-      value: 2
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 4011650200241831704, guid: 8290bc46be1825d49932e2492480426b, type: 3}
       propertyPath: m_TargetTexture
       value: 
       objectReference: {fileID: 8400000, guid: 1528acf246a19472fb2d7ada997fea94, type: 2}
-    - target: {fileID: 4011650200241831704, guid: 8290bc46be1825d49932e2492480426b, type: 3}
-      propertyPath: m_BackGroundColor.b
-      value: 0.9803922
-      objectReference: {fileID: 0}
-    - target: {fileID: 4011650200241831704, guid: 8290bc46be1825d49932e2492480426b, type: 3}
-      propertyPath: m_BackGroundColor.g
-      value: 0.7568628
-      objectReference: {fileID: 0}
-    - target: {fileID: 4011650200241831704, guid: 8290bc46be1825d49932e2492480426b, type: 3}
-      propertyPath: m_BackGroundColor.r
-      value: 0.3372549
-      objectReference: {fileID: 0}
     - target: {fileID: 4011650200241831706, guid: 8290bc46be1825d49932e2492480426b, type: 3}
       propertyPath: m_LocalPosition.x
       value: -0
