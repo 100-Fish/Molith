@@ -66,6 +66,11 @@ namespace SUPERCharacter
         public float bodyCatchupSpeed = 2.5f;
         public float inputResponseFiltering = 2.5f;
 
+        [Tooltip("Camera automatically follows behind player instead of free mouse look")]
+        public bool autoFollowPlayerDirection = true;
+        [Tooltip("Speed at which camera rotates to follow player direction")]
+        public float cameraFollowSpeed = 5f;
+
 
 
         //
@@ -434,9 +439,10 @@ namespace SUPERCharacter
             {
                 #region Input
 #if ENABLE_INPUT_SYSTEM
-            MouseXY.x = Mouse.current.delta.y.ReadValue()/50;
-            MouseXY.y = Mouse.current.delta.x.ReadValue()/50;
-            
+            // Allow vertical mouse input, but horizontal follows player
+            MouseXY.x = Mouse.current.delta.y.ReadValue()/50; // Keep vertical mouse control
+            MouseXY.y = autoFollowPlayerDirection ? 0 : Mouse.current.delta.x.ReadValue()/50; // Disable horizontal mouse input when auto-following
+
             mouseScrollWheel = Mouse.current.scroll.y.ReadValue()/1000;
             if(perspectiveSwitchingKey!=Key.None)perspecTog = Keyboard.current[perspectiveSwitchingKey].wasPressedThisFrame;
             if(interactKey!=Key.None)interactInput = Keyboard.current[interactKey].wasPressedThisFrame;
@@ -464,8 +470,9 @@ namespace SUPERCharacter
             MovInput.y = Keyboard.current.wKey.isPressed ? 1 : Keyboard.current.sKey.isPressed ? -1 : 0;
 #else
                 //camera
-                MouseXY.x = Input.GetAxis("Mouse Y");
-                MouseXY.y = Input.GetAxis("Mouse X");
+                // Allow vertical mouse input, but horizontal follows player
+                MouseXY.x = Input.GetAxis("Mouse Y"); // Keep vertical mouse control
+                MouseXY.y = autoFollowPlayerDirection ? 0 : Input.GetAxis("Mouse X"); // Disable horizontal mouse input when auto-following
                 mouseScrollWheel = Input.GetAxis("Mouse ScrollWheel");
                 perspecTog = Input.GetKeyDown(perspectiveSwitchingKey_L);
                 interactInput = Input.GetKeyDown(interactKey_L);
@@ -683,7 +690,23 @@ namespace SUPERCharacter
 
                                     headPos = transform.position + Vector3.up * standingEyeHeight;
                                     quatHeadRot = Quaternion.Euler(headRot);
-                                    headRot = Vector3.SmoothDamp(headRot, headRot + ((Vector3)yawPitchInput * (inputSensitivity * 5)), ref cameraPosVelRef, (Mathf.Pow(cameraWeight, 2)) * Time.fixedDeltaTime, maxDelta, Time.fixedDeltaTime);
+
+                                    // Auto-follow player direction or use mouse input
+                                    if (autoFollowPlayerDirection)
+                                    {
+                                        // Smoothly rotate camera to match player's forward direction
+                                        float targetYaw = transform.eulerAngles.y;
+                                        headRot.y = Mathf.LerpAngle(headRot.y, targetYaw, cameraFollowSpeed * Time.fixedDeltaTime);
+
+                                        // Still allow vertical mouse input
+                                        headRot = Vector3.SmoothDamp(headRot, headRot + (Vector3.right * yawPitchInput.x * (inputSensitivity * 5)), ref cameraPosVelRef, (Mathf.Pow(cameraWeight, 2)) * Time.fixedDeltaTime, maxDelta, Time.fixedDeltaTime);
+                                    }
+                                    else
+                                    {
+                                        // Original behavior with full mouse control
+                                        headRot = Vector3.SmoothDamp(headRot, headRot + ((Vector3)yawPitchInput * (inputSensitivity * 5)), ref cameraPosVelRef, (Mathf.Pow(cameraWeight, 2)) * Time.fixedDeltaTime, maxDelta, Time.fixedDeltaTime);
+                                    }
+
                                     headRot.y += headRot.y > 180 ? -360 : headRot.y < -180 ? 360 : 0;
                                     headRot.x += headRot.x > 180 ? -360 : headRot.x < -180 ? 360 : 0;
                                     headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
@@ -2047,6 +2070,11 @@ namespace SUPERCharacter
                     t.bodyCatchupSpeed = EditorGUILayout.Slider(new GUIContent("Body Mesh Alignment Speed", "How quickly will the body align itself with the camera's relative direction"), t.bodyCatchupSpeed, 0, 5);
                     t.inputResponseFiltering = EditorGUILayout.Slider(new GUIContent("Input Response Filtering", "How quickly will the internal input direction align itself the player's input"), t.inputResponseFiltering, 0, 5);
                     EditorGUILayout.PropertyField(obstructionMaskField, new GUIContent("Camera Obstruction Layers", "The Layers the camera will register as an obstruction and move in front of ."));
+                    EditorGUILayout.Space();
+                    t.autoFollowPlayerDirection = EditorGUILayout.ToggleLeft(new GUIContent("Auto Follow Player Direction", "Camera automatically follows behind player instead of free mouse look"), t.autoFollowPlayerDirection);
+                    GUI.enabled = t.autoFollowPlayerDirection;
+                    t.cameraFollowSpeed = EditorGUILayout.Slider(new GUIContent("Camera Follow Speed", "Speed at which camera rotates to follow player direction"), t.cameraFollowSpeed, 0, 10);
+                    GUI.enabled = true;
                 }
             }
             EditorGUILayout.Space();
