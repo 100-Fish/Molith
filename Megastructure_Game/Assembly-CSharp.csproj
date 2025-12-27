@@ -64,16 +64,8 @@
     <Analyzer Include="C:\Program Files\Unity\Hub\Editor\2022.3.50f1\Editor\Data\Tools\Unity.SourceGenerators\Unity.Properties.SourceGenerator.dll" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Assets\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\MovingPlatform.cs" />
-    <Compile Include="Assets\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\CollectableGem.cs" />
-    <Compile Include="Assets\SUPER Character Controller\Demo Assets\Scripts\OminousOffice\Door.cs" />
-    <Compile Include="Assets\SUPER Character Controller\Demo Assets\Scripts\Interactable.cs" />
-    <Compile Include="Assets\SUPER Character Controller\Demo Assets\Scripts\Collectable.cs" />
-    <Compile Include="Assets\SUPER Character Controller\SUPER Character Controller\SUPERCharacterAIO.cs" />
-    <Compile Include="Assets\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\CollectableCounter.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Assets\SUPER Character Controller\Demo Assets\README.txt" />
+    <Compile Include="Assets\WorldGenerator.cs" />
+    <Compile Include="Assets\GameManager.cs" />
   </ItemGroup>
   <ItemGroup>
     <Reference Include="UnityEngine">
