@@ -407,7 +407,7 @@ PrefabInstance:
     - target: {fileID: 4011650199783796440, guid: 8290bc46be1825d49932e2492480426b, type: 3}
       propertyPath: _3rdPersonCharacterAnimator
       value: 
-      objectReference: {fileID: 770170169}
+      objectReference: {fileID: 683883252}
     - target: {fileID: 4011650199783796440, guid: 8290bc46be1825d49932e2492480426b, type: 3}
       propertyPath: footstepSoundSet.Array.size
       value: 1
@@ -676,6 +676,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: ROBOT_v2
       objectReference: {fileID: 0}
+    - target: {fileID: 5866666021909216657, guid: 988a357423fef394e89f0109aeefa4e3, type: 3}
+      propertyPath: m_Controller
+      value: 
+      objectReference: {fileID: 9100000, guid: 6721acb58c655d04ca5d71416b15b100, type: 2}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
@@ -691,10 +695,10 @@ Transform:
   m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: 988a357423fef394e89f0109aeefa4e3, type: 3}
   m_PrefabInstance: {fileID: 325641437}
   m_PrefabAsset: {fileID: 0}
---- !u!95 &770170169 stripped
+--- !u!95 &683883252 stripped
 Animator:
-  m_CorrespondingSourceObject: {fileID: 1153585621, guid: 8290bc46be1825d49932e2492480426b, type: 3}
-  m_PrefabInstance: {fileID: 218931640}
+  m_CorrespondingSourceObject: {fileID: 5866666021909216657, guid: 988a357423fef394e89f0109aeefa4e3, type: 3}
+  m_PrefabInstance: {fileID: 325641437}
   m_PrefabAsset: {fileID: 0}
 --- !u!4 &770170170 stripped
 Transform:
