@@ -76,8 +76,10 @@ public class WorldGenerator : MonoBehaviour
                 // Spawn structure if prefab is assigned
                 if (structurePrefab != null)
                 {
-                    GameObject structure = Instantiate(structurePrefab, position, Quaternion.identity, transform);
-                    structure.transform.localScale = Vector3.one * scale;
+                    float randomScale = Random.Range(0.25f, 2f) * scale;
+                    GameObject structure = Instantiate(structurePrefab, position, Random.rotation, transform);
+                    structure.transform.localScale = randomScale * Vector3.one;
+                    
 
                     // Adjust Y position so bottom touches the ground
                     Bounds bounds = GetTotalBounds(structure);
@@ -86,6 +88,7 @@ public class WorldGenerator : MonoBehaviour
                         float yOffset = -bounds.min.y;
                         structure.transform.position += Vector3.up * yOffset;
                     }
+                    structure.transform.position -= Vector3.up * Random.Range(2f,10f);
                 }
             }
         }

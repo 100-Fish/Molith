@@ -14,22 +14,22 @@ OcclusionCullingSettings:
 RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 9
-  m_Fog: 0
-  m_FogColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
-  m_FogMode: 2
-  m_FogDensity: 0.03
-  m_LinearFogStart: -278.22
-  m_LinearFogEnd: -167.79
+  m_Fog: 1
+  m_FogColor: {r: 0.35552153, g: 0.5447367, b: 0.6301887, a: 1}
+  m_FogMode: 1
+  m_FogDensity: 0.05
+  m_LinearFogStart: 30
+  m_LinearFogEnd: 50
   m_AmbientSkyColor: {r: 0.89073944, g: 0.89073944, b: 0.89073944, a: 1}
   m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
   m_AmbientIntensity: 1.85
   m_AmbientMode: 3
-  m_SubtractiveShadowColor: {r: 0.7924528, g: 0.7924528, b: 0.7924528, a: 1}
+  m_SubtractiveShadowColor: {r: 0.3283019, g: 0.3283019, b: 0.3283019, a: 1}
   m_SkyboxMaterial: {fileID: 2100000, guid: 1bbce50e2f95ecc40a05e1c7763105df, type: 2}
-  m_HaloStrength: 0.5
-  m_FlareStrength: 1
-  m_FlareFadeSpeed: 3
+  m_HaloStrength: 0
+  m_FlareStrength: 0
+  m_FlareFadeSpeed: 0
   m_HaloTexture: {fileID: 0}
   m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
   m_DefaultReflectionMode: 0
@@ -97,7 +97,7 @@ LightmapSettings:
     m_TrainingDataDestination: TrainingData
     m_LightProbeSampleCountMultiplier: 4
   m_LightingDataAsset: {fileID: 0}
-  m_LightingSettings: {fileID: 0}
+  m_LightingSettings: {fileID: 4890085278179872738, guid: 30c4ff102a280f14eaf3f5266df533a4, type: 2}
 --- !u!196 &4
 NavMeshSettings:
   serializedVersion: 2
@@ -258,12 +258,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 38f65fa25acef9046bff5cda3cab3f6e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  structurePrefab: {fileID: 3232072560361496943, guid: 515c983179cfe834489bb0eb8f7e590a, type: 3}
+  structurePrefab: {fileID: 7236420130388650498, guid: 914721baa6f28f94cbafa31bed74265b, type: 3}
   numberOfCircles: 5
   baseRadius: 20
   radiusExponent: 2.5
-  baseScale: 1
-  scaleGrowthRate: 3.5
+  baseScale: 2.22
+  scaleGrowthRate: 2
   groundPlaneMeshFilter: {fileID: 96894730}
   noiseScale: 10
   noiseStrength: 10
@@ -1518,14 +1518,14 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 4011650200056979109}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.6, z: -0.066}
+  m_LocalRotation: {x: 0, y: 0.6870241, z: 0, w: 0.7266347}
+  m_LocalPosition: {x: -9.43, y: 1.84, z: -0.066}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 4924606773086436891}
   m_Father: {fileID: 4011650199967518561}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 86.79, z: 0}
 --- !u!81 &4011650200056979107
 AudioListener:
   m_ObjectHideFlags: 0
