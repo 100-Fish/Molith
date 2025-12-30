@@ -548,7 +548,7 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -2310514774154243031, guid: ec7d42c4a2f5d9e4d92015f925807265, type: 3}
+  - {fileID: 2100000, guid: 3e028013797ad2c478008254d355232c, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1028,7 +1028,7 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -749338713933554755, guid: ec7d42c4a2f5d9e4d92015f925807265, type: 3}
+  - {fileID: 2100000, guid: dd1ddc2159f4daa44b3c45a7f89e6c56, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1149,8 +1149,6 @@ MonoBehaviour:
   cameraZoomSensitivity: 1
   bodyCatchupSpeed: 1.75
   inputResponseFiltering: 0.1
-  autoFollowPlayerDirection: 1
-  cameraFollowSpeed: 2
   enableMovementControl: 1
   walkingSpeed: 300
   sprintingSpeed: 400
@@ -1622,7 +1620,7 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: -2310514774154243031, guid: ec7d42c4a2f5d9e4d92015f925807265, type: 3}
+  - {fileID: 2100000, guid: 3e028013797ad2c478008254d355232c, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
