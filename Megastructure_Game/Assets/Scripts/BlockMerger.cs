@@ -54,7 +54,9 @@ public class BlockMerger : MonoBehaviour
         allBlocksInMerge.Add(gameObject);
 
         List<Vector3> allWorldVertices = new List<Vector3>();
+        List<int> allTriangles = new List<int>();
         Material sharedMaterial = null;
+        int vertexOffset = 0;
 
         foreach (GameObject block in allBlocksInMerge)
         {
@@ -63,13 +65,34 @@ public class BlockMerger : MonoBehaviour
             MeshFilter meshFilter = block.GetComponent<MeshFilter>();
             Renderer renderer = block.GetComponent<Renderer>();
 
-            if (meshFilter != null && meshFilter.sharedMesh != null)
+            if (meshFilter != null)
             {
-                Vector3[] localVerts = meshFilter.sharedMesh.vertices;
-                foreach (Vector3 v in localVerts)
+                Mesh meshToUse = meshFilter.sharedMesh != null ? meshFilter.sharedMesh : meshFilter.mesh;
+
+                if (meshToUse != null)
                 {
-                    Vector3 worldVert = block.transform.TransformPoint(v);
-                    allWorldVertices.Add(worldVert);
+                    Vector3[] localVerts = meshToUse.vertices;
+                    int[] localTriangles = meshToUse.triangles;
+                    Vector3 blockPos = block.transform.position;
+                    Quaternion blockRot = block.transform.rotation;
+                    Vector3 blockScale = block.transform.lossyScale;
+
+                    // Transform and add vertices
+                    foreach (Vector3 v in localVerts)
+                    {
+                        Vector3 scaledVert = Vector3.Scale(v, blockScale);
+                        Vector3 rotatedVert = blockRot * scaledVert;
+                        Vector3 worldVert = rotatedVert + blockPos;
+                        allWorldVertices.Add(worldVert);
+                    }
+
+                    // Add triangles with offset
+                    foreach (int tri in localTriangles)
+                    {
+                        allTriangles.Add(tri + vertexOffset);
+                    }
+
+                    vertexOffset += localVerts.Length;
                 }
 
                 if (sharedMaterial == null && renderer != null)
@@ -83,14 +106,10 @@ public class BlockMerger : MonoBehaviour
             }
         }
 
-        if (allWorldVertices.Count < 4)
+        if (allWorldVertices.Count < 3)
             return;
 
-        if (simplificationTolerance > 0.001f)
-        {
-            allWorldVertices = MergeCloseVertices(allWorldVertices, simplificationTolerance);
-        }
-
+        // Calculate centroid
         Vector3 centroid = Vector3.zero;
         foreach (Vector3 v in allWorldVertices)
         {
@@ -98,24 +117,36 @@ public class BlockMerger : MonoBehaviour
         }
         centroid /= allWorldVertices.Count;
 
+        // Convert to local space
         List<Vector3> localVertices = new List<Vector3>();
         foreach (Vector3 v in allWorldVertices)
         {
             localVertices.Add(v - centroid);
         }
 
-        Mesh mergedMesh = CreateConvexHullMesh(localVertices);
+        // Create merged mesh keeping all geometry
+        Mesh mergedMesh = new Mesh();
+        mergedMesh.name = "MergedMesh";
+        mergedMesh.vertices = localVertices.ToArray();
+        mergedMesh.triangles = allTriangles.ToArray();
 
         if (mergedMesh == null)
             return;
 
+        // Calculate normals before smoothing
+        mergedMesh.RecalculateNormals();
+        mergedMesh.RecalculateBounds();
+
         if (enableSmoothing && smoothingIterations > 0)
         {
             SmoothMesh(mergedMesh, smoothingIterations);
+            // Recalculate after smoothing
+            mergedMesh.RecalculateNormals();
+            mergedMesh.RecalculateBounds();
         }
 
-        mergedMesh.RecalculateNormals();
-        mergedMesh.RecalculateBounds();
+        // Generate UVs
+        GenerateUVs(mergedMesh);
 
         GameObject mergedBlock = new GameObject("MergedBlock");
         mergedBlock.transform.position = centroid;
@@ -128,7 +159,7 @@ public class BlockMerger : MonoBehaviour
 
         newMeshFilter.mesh = mergedMesh;
         newCollider.sharedMesh = mergedMesh;
-        newCollider.convex = true;
+        newCollider.convex = false; // Use non-convex after smoothing
 
         if (sharedMaterial != null)
         {
@@ -532,5 +563,27 @@ public class BlockMerger : MonoBehaviour
             v0 = a;
             v1 = b;
         }
+    }
+
+    void GenerateUVs(Mesh mesh)
+    {
+        Vector3[] vertices = mesh.vertices;
+        Vector2[] uvs = new Vector2[vertices.Length];
+
+        // Simple planar UV mapping based on vertex positions
+        Bounds bounds = mesh.bounds;
+
+        for (int i = 0; i < vertices.Length; i++)
+        {
+            Vector3 v = vertices[i];
+
+            // Use XZ plane for UV mapping
+            float u = (v.x - bounds.min.x) / (bounds.size.x + 0.001f);
+            float v2 = (v.z - bounds.min.z) / (bounds.size.z + 0.001f);
+
+            uvs[i] = new Vector2(u, v2);
+        }
+
+        mesh.uv = uvs;
     }
 }
