@@ -6,29 +6,35 @@ using DG.Tweening;
 [Serializable]
 public class BlockData
 {
+    public string shapeName;
     public Vector3 position;
     public float scale;
 
-    public BlockData(Vector3 pos, float scl)
+    public BlockData(string shape, Vector3 pos, float scl)
     {
+        shapeName = shape;
         position = pos;
         scale = scl;
     }
 
     public override string ToString()
     {
-        return $"{position.x:F1},{position.y:F1},{position.z:F1},{scale:F1}";
+        return $"{shapeName},{position.x:F1},{position.y:F1},{position.z:F1},{scale:F1} EOL";
     }
 }
 
 public class BuildingSystem : MonoBehaviour
 {
     [Header("References")]
-    [Tooltip("The block prefab to spawn (must have a Collider and MeshRenderer)")]
-    public GameObject blockPrefab;
+    [Tooltip("The currently selected block shape to place")]
+    public BlockShape currentBlockShape;
 
     [Tooltip("Material to use for previews (should use FX/Hologram shader)")]
     public Material hologramMaterial;
+
+    [Header("Legacy Support")]
+    [Tooltip("(Legacy) Direct block prefab reference - will be converted to BlockShape on Start")]
+    public GameObject blockPrefab;
 
     [Header("Placement Settings")]
     [Tooltip("Distance from camera to place blocks")]
@@ -90,6 +96,9 @@ public class BuildingSystem : MonoBehaviour
     public int RemainingBlocks => maxBlocks - CurrentBlockCount;
     public List<BlockData> BlockHistory => new List<BlockData>(blockHistory);
 
+    private GameObject CurrentPrefab => currentBlockShape != null ? currentBlockShape.shapePrefab : blockPrefab;
+    private string CurrentShapeName => currentBlockShape != null ? currentBlockShape.shapeName : "cube";
+
     void Start()
     {
         if (GameManager.Instance == null)
@@ -98,9 +107,17 @@ public class BuildingSystem : MonoBehaviour
             return;
         }
 
-        if (blockPrefab == null)
+        if (currentBlockShape == null)
         {
-            Debug.LogError("BuildingSystem: BlockPrefab reference is missing! Please assign it in the inspector.");
+            Debug.LogWarning("BuildingSystem: No BlockShape assigned! Using legacy blockPrefab if available.");
+            if (blockPrefab == null)
+            {
+                Debug.LogError("BuildingSystem: Neither BlockShape nor BlockPrefab is assigned! Please assign one in the inspector.");
+            }
+        }
+        else if (currentBlockShape.shapePrefab == null)
+        {
+            Debug.LogError($"BuildingSystem: BlockShape '{currentBlockShape.shapeName}' has no prefab assigned!");
         }
 
         if (hologramMaterial == null)
@@ -183,10 +200,10 @@ public class BuildingSystem : MonoBehaviour
 
     void CreatePreviewBlock()
     {
-        if (blockPrefab == null)
+        if (CurrentPrefab == null)
             return;
 
-        currentPreview = Instantiate(blockPrefab);
+        currentPreview = Instantiate(CurrentPrefab);
 
         Collider previewCollider = currentPreview.GetComponent<Collider>();
         if (previewCollider != null)
@@ -334,7 +351,7 @@ public class BuildingSystem : MonoBehaviour
 
     void PlaceBlock()
     {
-        if (currentPreview == null || blockPrefab == null)
+        if (currentPreview == null || CurrentPrefab == null)
             return;
 
         // Check if we've reached the block limit
@@ -356,7 +373,7 @@ public class BuildingSystem : MonoBehaviour
         // Round scale to nearest 0.1
         float roundedScale = Mathf.Round(currentScaleMultiplier * 10f) / 10f;
 
-        GameObject newBlock = Instantiate(blockPrefab, roundedPosition, Quaternion.identity);
+        GameObject newBlock = Instantiate(CurrentPrefab, roundedPosition, Quaternion.identity);
 
         newBlock.transform.localScale = Vector3.one * roundedScale;
 
@@ -369,7 +386,7 @@ public class BuildingSystem : MonoBehaviour
         MeshRenderer renderer = newBlock.GetComponent<MeshRenderer>();
         if (renderer != null)
         {
-            MeshRenderer prefabRenderer = blockPrefab.GetComponent<MeshRenderer>();
+            MeshRenderer prefabRenderer = CurrentPrefab.GetComponent<MeshRenderer>();
             if (prefabRenderer != null)
             {
                 renderer.materials = prefabRenderer.sharedMaterials;
@@ -379,7 +396,7 @@ public class BuildingSystem : MonoBehaviour
         placedBlocks.Add(newBlock);
 
         // Create and track block data
-        BlockData blockData = new BlockData(roundedPosition, roundedScale);
+        BlockData blockData = new BlockData(CurrentShapeName, roundedPosition, roundedScale);
         blockHistory.Add(blockData);
         blockToData[newBlock] = blockData;
 
@@ -540,7 +557,9 @@ public class BuildingSystem : MonoBehaviour
         );
         float roundedScale = Mathf.Round(block.transform.localScale.x * 10f) / 10f;
 
-        BlockData blockData = new BlockData(roundedPosition, roundedScale);
+        // For merged blocks, use "merged" as shape name or current shape
+        string shapeName = CurrentShapeName;
+        BlockData blockData = new BlockData(shapeName, roundedPosition, roundedScale);
         blockHistory.Add(blockData);
         blockToData[block] = blockData;
     }

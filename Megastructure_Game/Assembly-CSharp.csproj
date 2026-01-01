@@ -66,6 +66,7 @@
   <ItemGroup>
     <Compile Include="Assets\Scripts\BuildHistoryManager.cs" />
     <Compile Include="Assets\Scripts\BuildingSystem.cs" />
+    <Compile Include="Assets\Scripts\BlockShape.cs" />
     <Compile Include="Assets\Scripts\GameManager.cs" />
     <Compile Include="Assets\Scripts\WorldGenerator.cs" />
     <Compile Include="Assets\Scripts\UIManager.cs" />

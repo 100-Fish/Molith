@@ -8,7 +8,11 @@ public class BuildHistoryManager : MonoBehaviour
     [Tooltip("Reference to the BuildingSystem")]
     public BuildingSystem buildingSystem;
 
-    [Tooltip("Reference to the block prefab for importing")]
+    [Tooltip("List of available block shapes for importing")]
+    public List<BlockShape> availableShapes = new List<BlockShape>();
+
+    [Header("Legacy Support")]
+    [Tooltip("(Legacy) Direct block prefab reference")]
     public GameObject blockPrefab;
 
     void Start()
@@ -26,8 +30,12 @@ public class BuildHistoryManager : MonoBehaviour
 
     /// <summary>
     /// Exports the current block history to a simple readable format.
-    /// Format: Each line contains: x,y,z,scale
-    /// Example: 5.0,2.5,10.0,1.2
+    /// Format: START on first line, each block line contains: shapeName,x,y,z,scale EOL, END on last line
+    /// Example:
+    /// START
+    /// cube,5.0,2.5,10.0,1.2 EOL
+    /// sphere,3.5,1.0,8.5,0.8 EOL
+    /// END
     /// </summary>
     public string ExportBuildHistory()
     {
@@ -45,10 +53,14 @@ public class BuildHistoryManager : MonoBehaviour
         }
 
         StringBuilder sb = new StringBuilder();
+        sb.AppendLine("START");
+
         foreach (BlockData blockData in history)
         {
             sb.AppendLine(blockData.ToString());
         }
+
+        sb.AppendLine("END");
 
         string exportData = sb.ToString();
         Debug.Log($"BuildHistoryManager: Exported {history.Count} blocks:\n{exportData}");
@@ -57,8 +69,12 @@ public class BuildHistoryManager : MonoBehaviour
 
     /// <summary>
     /// Imports blocks from a formatted string and spawns them in the world.
-    /// Format: Each line contains: x,y,z,scale
-    /// Example: 5.0,2.5,10.0,1.2
+    /// Format: START on first line, each block line contains: shapeName,x,y,z,scale EOL, END on last line
+    /// Example:
+    /// START
+    /// cube,5.0,2.5,10.0,1.2 EOL
+    /// sphere,3.5,1.0,8.5,0.8 EOL
+    /// END
     /// </summary>
     /// <param name="buildData">The formatted build data string</param>
     /// <param name="clearExisting">If true, clears all existing blocks before importing</param>
@@ -67,12 +83,6 @@ public class BuildHistoryManager : MonoBehaviour
         if (buildingSystem == null)
         {
             Debug.LogError("BuildHistoryManager: BuildingSystem reference is missing!");
-            return;
-        }
-
-        if (blockPrefab == null)
-        {
-            Debug.LogError("BuildHistoryManager: BlockPrefab reference is missing!");
             return;
         }
 
@@ -91,6 +101,7 @@ public class BuildHistoryManager : MonoBehaviour
         string[] lines = buildData.Split('\n');
         int successCount = 0;
         int failCount = 0;
+        bool inDataBlock = false;
 
         foreach (string line in lines)
         {
@@ -98,18 +109,41 @@ public class BuildHistoryManager : MonoBehaviour
             if (string.IsNullOrEmpty(trimmedLine))
                 continue;
 
-            string[] parts = trimmedLine.Split(',');
-            if (parts.Length != 4)
+            // Check for START marker
+            if (trimmedLine == "START")
             {
-                Debug.LogWarning($"BuildHistoryManager: Invalid line format: {trimmedLine}");
+                inDataBlock = true;
+                continue;
+            }
+
+            // Check for END marker
+            if (trimmedLine == "END")
+            {
+                inDataBlock = false;
+                break;
+            }
+
+            // Only process lines within START/END block
+            if (!inDataBlock)
+                continue;
+
+            // Remove EOL marker if present
+            trimmedLine = trimmedLine.Replace(" EOL", "").Trim();
+
+            string[] parts = trimmedLine.Split(',');
+            if (parts.Length != 5)
+            {
+                Debug.LogWarning($"BuildHistoryManager: Invalid line format (expected 5 parts): {trimmedLine}");
                 failCount++;
                 continue;
             }
 
-            if (float.TryParse(parts[0], out float x) &&
-                float.TryParse(parts[1], out float y) &&
-                float.TryParse(parts[2], out float z) &&
-                float.TryParse(parts[3], out float scale))
+            string shapeName = parts[0].Trim();
+
+            if (float.TryParse(parts[1], out float x) &&
+                float.TryParse(parts[2], out float y) &&
+                float.TryParse(parts[3], out float z) &&
+                float.TryParse(parts[4], out float scale))
             {
                 // Check if we've reached the block limit
                 if (buildingSystem.CurrentBlockCount >= buildingSystem.maxBlocks)
@@ -119,7 +153,7 @@ public class BuildHistoryManager : MonoBehaviour
                 }
 
                 Vector3 position = new Vector3(x, y, z);
-                SpawnBlock(position, scale);
+                SpawnBlock(shapeName, position, scale);
                 successCount++;
             }
             else
@@ -135,9 +169,17 @@ public class BuildHistoryManager : MonoBehaviour
     /// <summary>
     /// Spawns a single block at the specified position with the given scale.
     /// </summary>
-    void SpawnBlock(Vector3 position, float scale)
+    void SpawnBlock(string shapeName, Vector3 position, float scale)
     {
-        GameObject newBlock = Instantiate(blockPrefab, position, Quaternion.identity);
+        GameObject prefabToSpawn = GetPrefabForShape(shapeName);
+
+        if (prefabToSpawn == null)
+        {
+            Debug.LogWarning($"BuildHistoryManager: No prefab found for shape '{shapeName}'. Skipping block.");
+            return;
+        }
+
+        GameObject newBlock = Instantiate(prefabToSpawn, position, Quaternion.identity);
         newBlock.transform.localScale = Vector3.one * scale;
 
         // Enable collider
@@ -149,6 +191,29 @@ public class BuildHistoryManager : MonoBehaviour
 
         // Add to building system
         buildingSystem.AddBlock(newBlock);
+    }
+
+    /// <summary>
+    /// Gets the prefab for a given shape name.
+    /// </summary>
+    GameObject GetPrefabForShape(string shapeName)
+    {
+        // First, try to find in availableShapes list
+        foreach (BlockShape shape in availableShapes)
+        {
+            if (shape != null && shape.shapeName == shapeName)
+            {
+                return shape.shapePrefab;
+            }
+        }
+
+        // Fallback to legacy blockPrefab if shape name is "cube"
+        if (shapeName == "cube" && blockPrefab != null)
+        {
+            return blockPrefab;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -168,15 +233,33 @@ public class BuildHistoryManager : MonoBehaviour
         // We need to get a copy of the blocks to destroy
         List<GameObject> blocksToDestroy = new List<GameObject>();
 
-        // Find all GameObjects with the block tag or that are children of the building system
+        // Find all placed blocks by checking for any object that might be a block
         GameObject[] allObjects = FindObjectsOfType<GameObject>();
         foreach (GameObject obj in allObjects)
         {
             // Check if this object is tracked by the building system
             if (obj.GetComponent<MeshRenderer>() != null && obj.GetComponent<Collider>() != null)
             {
-                // This might be a placed block - try to verify by checking if it has our prefab components
-                if (obj.name.Contains(blockPrefab.name))
+                // Check against all available shape prefabs
+                bool isBlock = false;
+
+                // Check available shapes
+                foreach (BlockShape shape in availableShapes)
+                {
+                    if (shape != null && shape.shapePrefab != null && obj.name.Contains(shape.shapePrefab.name))
+                    {
+                        isBlock = true;
+                        break;
+                    }
+                }
+
+                // Check legacy prefab
+                if (!isBlock && blockPrefab != null && obj.name.Contains(blockPrefab.name))
+                {
+                    isBlock = true;
+                }
+
+                if (isBlock)
                 {
                     blocksToDestroy.Add(obj);
                 }
