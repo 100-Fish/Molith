@@ -1,6 +1,25 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using DG.Tweening;
+
+[Serializable]
+public class BlockData
+{
+    public Vector3 position;
+    public float scale;
+
+    public BlockData(Vector3 pos, float scl)
+    {
+        position = pos;
+        scale = scl;
+    }
+
+    public override string ToString()
+    {
+        return $"{position.x:F1},{position.y:F1},{position.z:F1},{scale:F1}";
+    }
+}
 
 public class BuildingSystem : MonoBehaviour
 {
@@ -45,6 +64,10 @@ public class BuildingSystem : MonoBehaviour
     [Tooltip("Duration of block destruction animation")]
     public float destructionDuration = 0.2f;
 
+    [Header("Block Limit Settings")]
+    [Tooltip("Maximum number of blocks that can be placed at once")]
+    public int maxBlocks = 50;
+
     private GameObject currentPreview;
     private GameObject destructionSpherePreview;
     private bool isPlacementMode = false;
@@ -59,6 +82,13 @@ public class BuildingSystem : MonoBehaviour
 
     private readonly Dictionary<GameObject, Material[]> originalMaterials = new();
     private readonly HashSet<GameObject> blocksInDestructionRadius = new();
+
+    private readonly List<BlockData> blockHistory = new();
+    private readonly Dictionary<GameObject, BlockData> blockToData = new();
+
+    public int CurrentBlockCount => placedBlocks.Count;
+    public int RemainingBlocks => maxBlocks - CurrentBlockCount;
+    public List<BlockData> BlockHistory => new List<BlockData>(blockHistory);
 
     void Start()
     {
@@ -307,9 +337,28 @@ public class BuildingSystem : MonoBehaviour
         if (currentPreview == null || blockPrefab == null)
             return;
 
-        GameObject newBlock = Instantiate(blockPrefab, previewPosition, Quaternion.identity);
+        // Check if we've reached the block limit
+        if (CurrentBlockCount >= maxBlocks)
+        {
+            Debug.Log($"Cannot place block: Maximum block limit ({maxBlocks}) reached!");
+            Destroy(currentPreview);
+            currentPreview = null;
+            return;
+        }
 
-        newBlock.transform.localScale = Vector3.one * currentScaleMultiplier;
+        // Round position to nearest 0.5
+        Vector3 roundedPosition = new Vector3(
+            Mathf.Round(previewPosition.x * 2f) / 2f,
+            Mathf.Round(previewPosition.y * 2f) / 2f,
+            Mathf.Round(previewPosition.z * 2f) / 2f
+        );
+
+        // Round scale to nearest 0.1
+        float roundedScale = Mathf.Round(currentScaleMultiplier * 10f) / 10f;
+
+        GameObject newBlock = Instantiate(blockPrefab, roundedPosition, Quaternion.identity);
+
+        newBlock.transform.localScale = Vector3.one * roundedScale;
 
         Collider blockCollider = newBlock.GetComponent<Collider>();
         if (blockCollider != null)
@@ -328,6 +377,11 @@ public class BuildingSystem : MonoBehaviour
         }
 
         placedBlocks.Add(newBlock);
+
+        // Create and track block data
+        BlockData blockData = new BlockData(roundedPosition, roundedScale);
+        blockHistory.Add(blockData);
+        blockToData[newBlock] = blockData;
 
         Vector3 targetScale = newBlock.transform.localScale;
         newBlock.transform.localScale = Vector3.zero;
@@ -359,6 +413,14 @@ public class BuildingSystem : MonoBehaviour
         foreach (GameObject block in blocksToDestroy)
         {
             placedBlocks.Remove(block);
+
+            // Remove from block history
+            if (blockToData.ContainsKey(block))
+            {
+                BlockData data = blockToData[block];
+                blockHistory.Remove(data);
+                blockToData.Remove(block);
+            }
 
             if (originalMaterials.ContainsKey(block))
             {
@@ -450,6 +512,14 @@ public class BuildingSystem : MonoBehaviour
     {
         placedBlocks.Remove(block);
 
+        // Remove from block history
+        if (blockToData.ContainsKey(block))
+        {
+            BlockData data = blockToData[block];
+            blockHistory.Remove(data);
+            blockToData.Remove(block);
+        }
+
         if (originalMaterials.ContainsKey(block))
         {
             originalMaterials.Remove(block);
@@ -461,6 +531,18 @@ public class BuildingSystem : MonoBehaviour
     public void AddBlock(GameObject block)
     {
         placedBlocks.Add(block);
+
+        // Add block data for merged blocks
+        Vector3 roundedPosition = new Vector3(
+            Mathf.Round(block.transform.position.x * 2f) / 2f,
+            Mathf.Round(block.transform.position.y * 2f) / 2f,
+            Mathf.Round(block.transform.position.z * 2f) / 2f
+        );
+        float roundedScale = Mathf.Round(block.transform.localScale.x * 10f) / 10f;
+
+        BlockData blockData = new BlockData(roundedPosition, roundedScale);
+        blockHistory.Add(blockData);
+        blockToData[block] = blockData;
     }
 
     void OnDestroy()

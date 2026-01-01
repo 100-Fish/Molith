@@ -17,6 +17,9 @@ public class UIManager : MonoBehaviour
     [Tooltip("Text field for camera telemetry (position and rotation)")]
     public TextMeshProUGUI cameraTelemetryText;
 
+    [Tooltip("Text field for block count display")]
+    public TextMeshProUGUI blockCountText;
+
     [Header("UI Panel")]
     [Tooltip("Root panel transform - all child UI elements will be tinted")]
     public Transform uiPanelRoot;
@@ -77,6 +80,13 @@ public class UIManager : MonoBehaviour
             Vector3 camRot = playerController.playerCamera.transform.eulerAngles;
             cameraTelemetryText.text = $"CAM.POS [{camPos.x:F2}, {camPos.y:F2}, {camPos.z:F2}]\n" +
                                        $"CAM.ROT [{camRot.x:F1}, {camRot.y:F1}, {camRot.z:F1}]";
+        }
+
+        // Block count display
+        var buildingSystem = GameManager.Instance.buildingSystem;
+        if (blockCountText != null && buildingSystem != null)
+        {
+            blockCountText.text = $"BLOCKS: {buildingSystem.CurrentBlockCount}/{buildingSystem.maxBlocks}";
         }
     }
 
