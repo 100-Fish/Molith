@@ -42,6 +42,9 @@ public class GameManager : MonoBehaviour
     [Tooltip("Destruction mode color (red)")]
     public Color destructionColor = new Color(1, 0, 0, 0.5f);
 
+    [Tooltip("Build mode color (blue)")]
+    public Color buildModeColor = new Color(0.3f, 0.6f, 1f, 1f);
+
     void Awake()
     {
         if (instance == null)

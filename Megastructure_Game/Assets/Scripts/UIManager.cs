@@ -25,7 +25,7 @@ public class UIManager : MonoBehaviour
     public Transform uiPanelRoot;
 
     private Color currentTargetColor;
-    private enum UIState { Default, Placement, Destruction }
+    private enum UIState { Default, Placement, Destruction, BuildMode }
     private UIState currentState = UIState.Default;
     private List<Image> cachedImages = new List<Image>();
     private List<TextMeshProUGUI> cachedTexts = new List<TextMeshProUGUI>();
@@ -98,8 +98,14 @@ public class UIManager : MonoBehaviour
 
         UIState newState = UIState.Default;
 
+        // Check for build mode first (highest priority)
+        var buildModeController = FindObjectOfType<BuildModeController>();
+        if (buildModeController != null && buildModeController.IsInBuildMode)
+        {
+            newState = UIState.BuildMode;
+        }
         // Check if placement key is held
-        if (Input.GetKey(buildingSystem.placeKey))
+        else if (Input.GetKey(buildingSystem.placeKey))
         {
             newState = UIState.Placement;
         }
@@ -123,6 +129,10 @@ public class UIManager : MonoBehaviour
 
         switch (state)
         {
+            case UIState.BuildMode:
+                targetColor = GameManager.Instance.buildModeColor;
+                targetColor.a = 1f; // Full opacity for UI
+                break;
             case UIState.Placement:
                 targetColor = GameManager.Instance.placementColor;
                 targetColor.a = 1f; // Full opacity for UI

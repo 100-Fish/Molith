@@ -8,23 +8,11 @@ public class BuildHistoryManager : MonoBehaviour
     [Tooltip("Reference to the BuildingSystem")]
     public BuildingSystem buildingSystem;
 
-    [Tooltip("List of available block shapes for importing")]
-    public List<BlockShape> availableShapes = new List<BlockShape>();
-
-    [Header("Legacy Support")]
-    [Tooltip("(Legacy) Direct block prefab reference")]
-    public GameObject blockPrefab;
-
     void Start()
     {
         if (buildingSystem == null && GameManager.Instance != null)
         {
             buildingSystem = GameManager.Instance.buildingSystem;
-        }
-
-        if (blockPrefab == null && buildingSystem != null)
-        {
-            blockPrefab = buildingSystem.blockPrefab;
         }
     }
 
@@ -171,15 +159,13 @@ public class BuildHistoryManager : MonoBehaviour
     /// </summary>
     void SpawnBlock(string shapeName, Vector3 position, float scale)
     {
-        GameObject prefabToSpawn = GetPrefabForShape(shapeName);
-
-        if (prefabToSpawn == null)
+        if (buildingSystem == null || buildingSystem.cubePrefab == null)
         {
-            Debug.LogWarning($"BuildHistoryManager: No prefab found for shape '{shapeName}'. Skipping block.");
+            Debug.LogWarning("BuildHistoryManager: BuildingSystem or cubePrefab is missing!");
             return;
         }
 
-        GameObject newBlock = Instantiate(prefabToSpawn, position, Quaternion.identity);
+        GameObject newBlock = Instantiate(buildingSystem.cubePrefab, position, Quaternion.identity);
         newBlock.transform.localScale = Vector3.one * scale;
 
         // Enable collider
@@ -191,29 +177,6 @@ public class BuildHistoryManager : MonoBehaviour
 
         // Add to building system
         buildingSystem.AddBlock(newBlock);
-    }
-
-    /// <summary>
-    /// Gets the prefab for a given shape name.
-    /// </summary>
-    GameObject GetPrefabForShape(string shapeName)
-    {
-        // First, try to find in availableShapes list
-        foreach (BlockShape shape in availableShapes)
-        {
-            if (shape != null && shape.shapeName == shapeName)
-            {
-                return shape.shapePrefab;
-            }
-        }
-
-        // Fallback to legacy blockPrefab if shape name is "cube"
-        if (shapeName == "cube" && blockPrefab != null)
-        {
-            return blockPrefab;
-        }
-
-        return null;
     }
 
     /// <summary>
@@ -233,33 +196,15 @@ public class BuildHistoryManager : MonoBehaviour
         // We need to get a copy of the blocks to destroy
         List<GameObject> blocksToDestroy = new List<GameObject>();
 
-        // Find all placed blocks by checking for any object that might be a block
+        // Find all placed blocks by checking for cube prefab instances
         GameObject[] allObjects = FindObjectsOfType<GameObject>();
         foreach (GameObject obj in allObjects)
         {
             // Check if this object is tracked by the building system
             if (obj.GetComponent<MeshRenderer>() != null && obj.GetComponent<Collider>() != null)
             {
-                // Check against all available shape prefabs
-                bool isBlock = false;
-
-                // Check available shapes
-                foreach (BlockShape shape in availableShapes)
-                {
-                    if (shape != null && shape.shapePrefab != null && obj.name.Contains(shape.shapePrefab.name))
-                    {
-                        isBlock = true;
-                        break;
-                    }
-                }
-
-                // Check legacy prefab
-                if (!isBlock && blockPrefab != null && obj.name.Contains(blockPrefab.name))
-                {
-                    isBlock = true;
-                }
-
-                if (isBlock)
+                // Check if it's a cube block
+                if (buildingSystem.cubePrefab != null && obj.name.Contains(buildingSystem.cubePrefab.name))
                 {
                     blocksToDestroy.Add(obj);
                 }
