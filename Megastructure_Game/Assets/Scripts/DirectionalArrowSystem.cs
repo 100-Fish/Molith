@@ -53,6 +53,13 @@ public class DirectionalArrowSystem : MonoBehaviour
         }
     }
 
+    public void UpdateArrowPositions(GameObject block, Camera cam)
+    {
+        currentBlock = block;
+        playerCamera = cam;
+        UpdateArrowPositions();
+    }
+
     void Update()
     {
         if (currentBlock != null && playerCamera != null)
@@ -138,20 +145,21 @@ public class DirectionalArrowSystem : MonoBehaviour
 
         if (isHorizontal)
         {
-            Vector3 camRight = Vector3.Cross(Vector3.up, camForward).normalized;
-            Vector3 camForwardFlat = Vector3.Cross(camRight, Vector3.up).normalized;
+            // Horizontal mode - quantize camera yaw to nearest cardinal direction
+            Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
 
             switch (key)
             {
-                case KeyCode.W: return camForwardFlat;
-                case KeyCode.A: return -camRight;
-                case KeyCode.S: return -camForwardFlat;
-                case KeyCode.D: return camRight;
+                case KeyCode.W: return QuantizeToCardinal(camForwardFlat);
+                case KeyCode.A: return QuantizeToCardinal(Quaternion.Euler(0, -90, 0) * camForwardFlat);
+                case KeyCode.S: return QuantizeToCardinal(-camForwardFlat);
+                case KeyCode.D: return QuantizeToCardinal(Quaternion.Euler(0, 90, 0) * camForwardFlat);
                 default: return Vector3.zero;
             }
         }
         else
         {
+            // Vertical mode - already cardinal
             switch (key)
             {
                 case KeyCode.W: return Vector3.up;
@@ -160,6 +168,24 @@ public class DirectionalArrowSystem : MonoBehaviour
                 case KeyCode.D: return Vector3.right;
                 default: return Vector3.zero;
             }
+        }
+    }
+
+    private Vector3 QuantizeToCardinal(Vector3 direction)
+    {
+        // Snap to nearest world axis (forward/back/left/right)
+        float absX = Mathf.Abs(direction.x);
+        float absZ = Mathf.Abs(direction.z);
+
+        if (absX > absZ)
+        {
+            // Closer to X axis
+            return direction.x > 0 ? Vector3.right : Vector3.left;
+        }
+        else
+        {
+            // Closer to Z axis
+            return direction.z > 0 ? Vector3.forward : Vector3.back;
         }
     }
 

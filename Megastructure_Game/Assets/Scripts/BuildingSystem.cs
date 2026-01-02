@@ -130,7 +130,7 @@ public class BuildingSystem : MonoBehaviour
 
     void HandlePlacementInput()
     {
-        // Don't allow placement if in build mode
+        // Don't allow placement if in build mode or destruction mode
         if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
         {
             if (GameManager.Instance.buildModeController.IsInBuildMode)
@@ -143,17 +143,13 @@ public class BuildingSystem : MonoBehaviour
         if (Input.GetKeyDown(placeKey))
         {
             isPlacementMode = true;
-            scaleTime = 0f;
+            currentScaleMultiplier = 1.0f; // Always use scale 1.0
             CreatePreviewBlock();
         }
 
         if (Input.GetKey(placeKey) && isPlacementMode)
         {
-            scaleTime += Time.deltaTime * scaleOscillationSpeed;
-            currentScaleMultiplier = Mathf.Lerp(minScale, maxScale, (Mathf.Sin(scaleTime) + 1f) / 2f);
-
             UpdatePreviewPosition();
-            UpdatePreviewScale();
         }
 
         if (Input.GetKeyUp(placeKey) && isPlacementMode)
@@ -165,6 +161,13 @@ public class BuildingSystem : MonoBehaviour
 
     void HandleDestructionInput()
     {
+        // Don't allow destruction if in build mode or placement mode
+        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        {
+            if (GameManager.Instance.buildModeController.IsInBuildMode)
+                return;
+        }
+
         if (isPlacementMode)
             return;
 
@@ -353,15 +356,15 @@ public class BuildingSystem : MonoBehaviour
             return;
         }
 
-        // Round position to nearest 0.5
+        // Round position to nearest 1.0
         Vector3 roundedPosition = new Vector3(
-            Mathf.Round(previewPosition.x * 2f) / 2f,
-            Mathf.Round(previewPosition.y * 2f) / 2f,
-            Mathf.Round(previewPosition.z * 2f) / 2f
+            Mathf.Round(previewPosition.x),
+            Mathf.Round(previewPosition.y),
+            Mathf.Round(previewPosition.z)
         );
 
-        // Round scale to nearest 0.1
-        float roundedScale = Mathf.Round(currentScaleMultiplier * 10f) / 10f;
+        // Keep scale at 1.0 (constant size)
+        float roundedScale = 1.0f;
 
         GameObject newBlock = Instantiate(cubePrefab, roundedPosition, Quaternion.identity);
 
@@ -432,6 +435,12 @@ public class BuildingSystem : MonoBehaviour
         foreach (GameObject block in blocksToDestroy)
         {
             placedBlocks.Remove(block);
+
+            // Unregister from adjacency grid
+            if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
+            {
+                GameManager.Instance.adjacencyGrid.UnregisterBlock(block.transform.position);
+            }
 
             // Remove from block history
             if (blockToData.ContainsKey(block))
@@ -531,6 +540,12 @@ public class BuildingSystem : MonoBehaviour
     {
         placedBlocks.Remove(block);
 
+        // Unregister from adjacency grid
+        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
+        {
+            GameManager.Instance.adjacencyGrid.UnregisterBlock(block.transform.position);
+        }
+
         // Remove from block history
         if (blockToData.ContainsKey(block))
         {
@@ -553,11 +568,17 @@ public class BuildingSystem : MonoBehaviour
 
         // Add block data for merged blocks
         Vector3 roundedPosition = new Vector3(
-            Mathf.Round(block.transform.position.x * 2f) / 2f,
-            Mathf.Round(block.transform.position.y * 2f) / 2f,
-            Mathf.Round(block.transform.position.z * 2f) / 2f
+            Mathf.Round(block.transform.position.x),
+            Mathf.Round(block.transform.position.y),
+            Mathf.Round(block.transform.position.z)
         );
-        float roundedScale = Mathf.Round(block.transform.localScale.x * 10f) / 10f;
+        float roundedScale = 1.0f;
+
+        // Register with adjacency grid
+        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
+        {
+            GameManager.Instance.adjacencyGrid.RegisterBlock(block, roundedPosition);
+        }
 
         // For merged blocks, track position and scale
         BlockData blockData = new BlockData(roundedPosition, roundedScale);

@@ -4,7 +4,7 @@ using SUPERCharacter;
 public class BuildModeController : MonoBehaviour
 {
     [Header("Settings")]
-    public KeyCode exitBuildModeKey = KeyCode.Escape;
+    public KeyCode exitBuildModeKey = KeyCode.Space;
     public float blockPlacementDelay = 0.15f;
 
     private bool isInBuildMode = false;
@@ -14,6 +14,9 @@ public class BuildModeController : MonoBehaviour
     private SUPERCharacterAIO playerController;
     private float lastPlacementTime = 0f;
     private float gridSize = 1.0f; // Block size
+
+    private Vector3 savedPlayerPosition;
+    private float savedCameraDistance;
 
     void Start()
     {
@@ -27,6 +30,19 @@ public class BuildModeController : MonoBehaviour
     {
         // Only process build mode input when in build mode
         if (!isInBuildMode) return;
+
+        // Freeze player position in build mode
+        if (playerController != null)
+        {
+            playerController.transform.position = savedPlayerPosition;
+        }
+
+        // Update arrows continuously as camera rotates
+        if (currentSelectedBlock != null && GameManager.Instance != null &&
+            GameManager.Instance.arrowSystem != null && playerController != null)
+        {
+            GameManager.Instance.arrowSystem.UpdateArrowPositions(currentSelectedBlock, playerController.playerCamera);
+        }
 
         // Exit build mode
         if (Input.GetKeyDown(exitBuildModeKey))
@@ -56,19 +72,33 @@ public class BuildModeController : MonoBehaviour
         isInBuildMode = true;
         currentSelectedBlock = firstBlock;
 
-        // Disable player movement
+        // Disable player movement but keep camera control enabled
         if (playerController != null)
-            playerController.controllerPaused = true;
+        {
+            // Save player position to restore later
+            savedPlayerPosition = playerController.transform.position;
 
-        // Focus camera on block
-        if (GameManager.Instance != null && GameManager.Instance.buildCameraController != null)
-            GameManager.Instance.buildCameraController.FocusOnBlock(firstBlock);
+            // Save current camera distance
+            savedCameraDistance = playerController.maxCameraDistInternal;
+
+            playerController.controllerPaused = true;
+            playerController.enableCameraControl = true; // Allow camera orbit
+            playerController.buildModeOverride = true;
+            playerController.buildModeOrbitCenter = firstBlock.transform.position;
+
+            // Set increased orbit distance for better view
+            playerController.maxCameraDistInternal = playerController.buildModeOrbitDistance;
+            playerController.currentCameraZ = -playerController.buildModeOrbitDistance;
+
+            // Force third-person perspective for build mode orbit
+            playerController.ChangePerspective(SUPERCharacter.PerspectiveModes._3rdPerson);
+        }
 
         // Show arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
             GameManager.Instance.arrowSystem.ShowArrows(firstBlock, playerController.playerCamera);
 
-        Debug.Log("BuildModeController: Entered Build Mode - Press ESC to exit, WASD to place blocks");
+        Debug.Log("BuildModeController: Entered Build Mode - Press SPACE to exit, WASD to place blocks");
     }
 
     public void ExitBuildMode()
@@ -78,13 +108,16 @@ public class BuildModeController : MonoBehaviour
         isInBuildMode = false;
         currentSelectedBlock = null;
 
-        // Re-enable player movement
+        // Re-enable player movement and disable build mode override
         if (playerController != null)
+        {
             playerController.controllerPaused = false;
+            playerController.buildModeOverride = false;
 
-        // Restore camera
-        if (GameManager.Instance != null && GameManager.Instance.buildCameraController != null)
-            GameManager.Instance.buildCameraController.RestoreNormalCamera();
+            // Restore camera distance
+            playerController.maxCameraDistInternal = savedCameraDistance;
+            playerController.currentCameraZ = -savedCameraDistance;
+        }
 
         // Hide arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
@@ -103,11 +136,11 @@ public class BuildModeController : MonoBehaviour
 
         Vector3 newPosition = currentSelectedBlock.transform.position + direction * gridSize;
 
-        // Round to grid
+        // Round to grid (1.0 increments)
         newPosition = new Vector3(
-            Mathf.Round(newPosition.x * 2f) / 2f,
-            Mathf.Round(newPosition.y * 2f) / 2f,
-            Mathf.Round(newPosition.z * 2f) / 2f
+            Mathf.Round(newPosition.x),
+            Mathf.Round(newPosition.y),
+            Mathf.Round(newPosition.z)
         );
 
         // Check if position occupied
@@ -137,6 +170,10 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance.adjacencyGrid != null)
             GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, newPosition);
 
+        // Add to building system's block tracking
+        if (GameManager.Instance.buildingSystem != null)
+            GameManager.Instance.buildingSystem.AddBlock(newBlock);
+
         // Select this block and update camera/arrows
         SelectBlock(newBlock);
         lastPlacementTime = Time.time;
@@ -146,9 +183,11 @@ public class BuildModeController : MonoBehaviour
     {
         currentSelectedBlock = newBlock;
 
-        if (GameManager.Instance != null && GameManager.Instance.buildCameraController != null)
-            GameManager.Instance.buildCameraController.FocusOnBlock(newBlock);
+        // Update orbit center for camera
+        if (playerController != null)
+            playerController.buildModeOrbitCenter = newBlock.transform.position;
 
+        // Update arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
             GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
     }

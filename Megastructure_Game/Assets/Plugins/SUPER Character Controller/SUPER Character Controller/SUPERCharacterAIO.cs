@@ -37,7 +37,12 @@ namespace SUPERCharacter
         public Camera playerCamera;
         public bool enableCameraControl = true, lockAndHideMouse = true, autoGenerateCrosshair = true, showCrosshairIn3rdPerson = false, drawPrimitiveUI = false;
         public Sprite crosshairSprite;
-        public PerspectiveModes cameraPerspective = PerspectiveModes._1stPerson;
+
+        [Header("Build Mode Override")]
+        public bool buildModeOverride = false;
+        public Vector3 buildModeOrbitCenter = Vector3.zero;
+        public float buildModeOrbitDistance = 8f; // Increased distance for better view
+        public PerspectiveModes cameraPerspective = PerspectiveModes._3rdPerson;
         //use mouse wheel to switch modes. (too close will set it to fps mode and attempting to zoom out from fps will switch to tps mode)
         public bool automaticallySwitchPerspective = true;
 #if ENABLE_INPUT_SYSTEM
@@ -89,7 +94,7 @@ namespace SUPERCharacter
         float initialCameraFOV, FOVKickVelRef, currentFOVMod;
 
         //Third Person
-        float mouseScrollWheel, maxCameraDistInternal, currentCameraZ, cameraZRef;
+        [HideInInspector] public float mouseScrollWheel, maxCameraDistInternal, currentCameraZ, cameraZRef;
         Vector3 headPos, headRot, currentCameraPos, cameraPosVelRef;
         Quaternion quatHeadRot;
         Ray cameraObstCheck;
@@ -430,14 +435,25 @@ namespace SUPERCharacter
         }
         void Update()
         {
-            if (!controllerPaused)
-            {
-                #region Input
+            // Always capture mouse input for camera, even when paused (for build mode)
+            #region Camera Input
 #if ENABLE_INPUT_SYSTEM
             MouseXY.x = Mouse.current.delta.y.ReadValue()/50;
             MouseXY.y = Mouse.current.delta.x.ReadValue()/50;
             
             mouseScrollWheel = Mouse.current.scroll.y.ReadValue()/1000;
+#else
+            //camera
+            MouseXY.x = Input.GetAxis("Mouse Y");
+            MouseXY.y = Input.GetAxis("Mouse X");
+            mouseScrollWheel = Input.GetAxis("Mouse ScrollWheel");
+#endif
+            #endregion
+
+            if (!controllerPaused)
+            {
+                #region Input
+#if ENABLE_INPUT_SYSTEM
             if(perspectiveSwitchingKey!=Key.None)perspecTog = Keyboard.current[perspectiveSwitchingKey].wasPressedThisFrame;
             if(interactKey!=Key.None)interactInput = Keyboard.current[interactKey].wasPressedThisFrame;
             //movement
@@ -463,10 +479,6 @@ namespace SUPERCharacter
             MovInput.x = Keyboard.current.aKey.isPressed ? -1 : Keyboard.current.dKey.isPressed ? 1 : 0;
             MovInput.y = Keyboard.current.wKey.isPressed ? 1 : Keyboard.current.sKey.isPressed ? -1 : 0;
 #else
-                //camera
-                MouseXY.x = Input.GetAxis("Mouse Y");
-                MouseXY.y = Input.GetAxis("Mouse X");
-                mouseScrollWheel = Input.GetAxis("Mouse ScrollWheel");
                 perspecTog = Input.GetKeyDown(perspectiveSwitchingKey_L);
                 interactInput = Input.GetKeyDown(interactKey_L);
                 //movement
@@ -615,11 +627,24 @@ namespace SUPERCharacter
         }
         void FixedUpdate()
         {
+            // Camera updates allowed even when paused (for build mode orbit)
+            #region Camera
+            if (enableCameraControl)
+            {
+                RotateView(MouseXY, Sensitivity, rotationWeight);
+                if (cameraPerspective == PerspectiveModes._3rdPerson)
+                {
+                    if (!controllerPaused)
+                    {
+                        UpdateBodyRotation_3rdPerson();
+                    }
+                    UpdateCameraPosition_3rdPerson();
+                }
+            }
+            #endregion
+
             if (!controllerPaused)
             {
-
-
-
                 #region Movement
                 if (enableMovementControl)
                 {
@@ -628,16 +653,6 @@ namespace SUPERCharacter
 
                     if (isSliding) { Slide(); }
                 }
-                #endregion
-
-                #region Camera
-                RotateView(MouseXY, Sensitivity, rotationWeight);
-                if (cameraPerspective == PerspectiveModes._3rdPerson)
-                {
-                    UpdateBodyRotation_3rdPerson();
-                    UpdateCameraPosition_3rdPerson();
-                }
-
                 #endregion
             }
         }
@@ -681,12 +696,20 @@ namespace SUPERCharacter
                             case PerspectiveModes._3rdPerson:
                                 {
 
-                                    headPos = transform.position + Vector3.up * standingEyeHeight;
+                                    if (buildModeOverride)
+                                        headPos = buildModeOrbitCenter;
+                                    else
+                                        headPos = transform.position + Vector3.up * standingEyeHeight;
                                     quatHeadRot = Quaternion.Euler(headRot);
                                     headRot = Vector3.SmoothDamp(headRot, headRot + ((Vector3)yawPitchInput * (inputSensitivity * 5)), ref cameraPosVelRef, (Mathf.Pow(cameraWeight, 2)) * Time.fixedDeltaTime, maxDelta, Time.fixedDeltaTime);
                                     headRot.y += headRot.y > 180 ? -360 : headRot.y < -180 ? 360 : 0;
                                     headRot.x += headRot.x > 180 ? -360 : headRot.x < -180 ? 360 : 0;
-                                    headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
+
+                                    // Remove vertical rotation limit in build mode
+                                    if (!buildModeOverride)
+                                    {
+                                        headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
+                                    }
 
 
                                 }
@@ -764,12 +787,20 @@ namespace SUPERCharacter
                                 Vector3 refVec = Vector3.zero;
                                 while (Vector3.Distance(headRot, AbsoluteEulerAngles) > 0.1f)
                                 {
-                                    headPos = p_Rigidbody.position + Vector3.up * standingEyeHeight;
+                                    if (buildModeOverride)
+                                        headPos = buildModeOrbitCenter;
+                                    else
+                                        headPos = p_Rigidbody.position + Vector3.up * standingEyeHeight;
                                     quatHeadRot = Quaternion.Euler(headRot);
                                     headRot = Vector3.SmoothDamp(headRot, AbsoluteEulerAngles, ref refVec, 25 * Time.deltaTime);
                                     headRot.y += headRot.y > 180 ? -360 : headRot.y < -180 ? 360 : 0;
                                     headRot.x += headRot.x > 180 ? -360 : headRot.x < -180 ? 360 : 0;
-                                    headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
+
+                                    // Remove vertical rotation limit in build mode
+                                    if (!buildModeOverride)
+                                    {
+                                        headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
+                                    }
                                     yield return null;
                                 }
                                 doingCamInterp = false;
