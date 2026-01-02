@@ -18,12 +18,38 @@ public class BuildModeController : MonoBehaviour
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
 
+    void Awake()
+    {
+        // Ensure build mode is exited on game start
+        isInBuildMode = false;
+        currentSelectedBlock = null;
+    }
+
     void Start()
     {
         if (GameManager.Instance != null)
         {
             playerController = GameManager.Instance.playerController;
         }
+
+        // Ensure player controller is in normal mode on game start
+        if (playerController != null)
+        {
+            // Explicitly enable all normal mode settings
+            playerController.controllerPaused = false;
+            playerController.buildModeOverride = false;
+            playerController.enableCameraControl = true;
+
+            // Set camera perspective directly instead of calling ChangePerspective
+            // (ChangePerspective may fail if SUPERCharacterAIO hasn't fully initialized)
+            playerController.cameraPerspective = SUPERCharacter.PerspectiveModes._3rdPerson;
+
+            Debug.Log("BuildModeController: Initialized - Camera control enabled, third-person mode set");
+        }
+
+        // Hide arrows on start
+        if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
+            GameManager.Instance.arrowSystem.HideArrows();
     }
 
     void Update()
@@ -185,7 +211,25 @@ public class BuildModeController : MonoBehaviour
 
         // Update orbit center for camera
         if (playerController != null)
+        {
             playerController.buildModeOrbitCenter = newBlock.transform.position;
+
+            // Rotate player to look at the newly placed block
+            Vector3 directionToBlock = newBlock.transform.position - playerController.transform.position;
+            directionToBlock.y = 0; // Keep rotation on horizontal plane only
+
+            if (directionToBlock != Vector3.zero)
+            {
+                // Calculate the target rotation angle to look at the block
+                float targetYaw = Mathf.Atan2(directionToBlock.x, directionToBlock.z) * Mathf.Rad2Deg;
+
+                // Get current pitch (vertical rotation) from camera
+                float currentPitch = playerController.playerCamera.transform.eulerAngles.x;
+
+                // Rotate view to look at the block (smooth rotation)
+                playerController.RotateView(new Vector3(currentPitch, targetYaw, 0), true);
+            }
+        }
 
         // Update arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)

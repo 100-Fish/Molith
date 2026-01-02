@@ -520,7 +520,12 @@ namespace SUPERCharacter
                                 //  UpdateCameraPosition_3rdPerson();
                                 if (!isInThirdPerson) { ChangePerspective(PerspectiveModes._3rdPerson); }
                                 if (perspecTog || (automaticallySwitchPerspective && maxCameraDistInternal == 0 && currentCameraZ == 0)) { ChangePerspective(PerspectiveModes._1stPerson); }
-                                maxCameraDistInternal = Mathf.Clamp(maxCameraDistInternal - (mouseScrollWheel * (cameraZoomSensitivity * 2)), automaticallySwitchPerspective ? 0 : (capsule.radius * 2), maxCameraDistance);
+
+                                // Disable zoom in build mode to maintain constant orbit distance
+                                if (!buildModeOverride)
+                                {
+                                    maxCameraDistInternal = Mathf.Clamp(maxCameraDistInternal - (mouseScrollWheel * (cameraZoomSensitivity * 2)), automaticallySwitchPerspective ? 0 : (capsule.radius * 2), maxCameraDistance);
+                                }
                             }
                             break;
                     }
@@ -919,26 +924,35 @@ namespace SUPERCharacter
         }
         void UpdateCameraPosition_3rdPerson()
         {
-
-            //Camera Obstacle Check
-            cameraObstCheck = new Ray(headPos + (quatHeadRot * (Vector3.forward * capsule.radius)), quatHeadRot * -Vector3.forward);
-            if (Physics.SphereCast(cameraObstCheck, 0.5f, out cameraObstResult, maxCameraDistInternal, cameraObstructionIgnore, QueryTriggerInteraction.Ignore))
+            // In build mode, use fixed distance without obstacle detection or smoothing
+            if (buildModeOverride)
             {
-                currentCameraZ = -(Vector3.Distance(headPos, cameraObstResult.point) * 0.9f);
-
+                // Fixed distance orbit - no smoothing, no obstacle detection
+                currentCameraZ = -buildModeOrbitDistance;
             }
             else
             {
-                currentCameraZ = Mathf.SmoothDamp(currentCameraZ, -(maxCameraDistInternal * 0.85f), ref cameraZRef, Time.deltaTime, 10, Time.fixedDeltaTime);
+                //Camera Obstacle Check
+                cameraObstCheck = new Ray(headPos + (quatHeadRot * (Vector3.forward * capsule.radius)), quatHeadRot * -Vector3.forward);
+                if (Physics.SphereCast(cameraObstCheck, 0.5f, out cameraObstResult, maxCameraDistInternal, cameraObstructionIgnore, QueryTriggerInteraction.Ignore))
+                {
+                    currentCameraZ = -(Vector3.Distance(headPos, cameraObstResult.point) * 0.9f);
+
+                }
+                else
+                {
+                    currentCameraZ = Mathf.SmoothDamp(currentCameraZ, -(maxCameraDistInternal * 0.85f), ref cameraZRef, Time.deltaTime, 10, Time.fixedDeltaTime);
+                }
+
+                //Debugging
+                if (enableMouseAndCameraDebugging)
+                {
+                    Debug.Log(headRot);
+                    Debug.DrawRay(cameraObstCheck.origin, cameraObstCheck.direction * maxCameraDistance, Color.red);
+                    Debug.DrawRay(cameraObstCheck.origin, cameraObstCheck.direction * -currentCameraZ, Color.green);
+                }
             }
 
-            //Debugging
-            if (enableMouseAndCameraDebugging)
-            {
-                Debug.Log(headRot);
-                Debug.DrawRay(cameraObstCheck.origin, cameraObstCheck.direction * maxCameraDistance, Color.red);
-                Debug.DrawRay(cameraObstCheck.origin, cameraObstCheck.direction * -currentCameraZ, Color.green);
-            }
             currentCameraPos = headPos + (quatHeadRot * (Vector3.forward * currentCameraZ));
             playerCamera.transform.position = currentCameraPos;
             playerCamera.transform.rotation = quatHeadRot;
