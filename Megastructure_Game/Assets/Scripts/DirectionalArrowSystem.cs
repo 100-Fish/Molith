@@ -166,7 +166,7 @@ public class DirectionalArrowSystem : MonoBehaviour
     private GameObject CreateDefaultArrowPrefab()
     {
         // Create simple cone arrow
-        GameObject arrow = GameObject.CreatePrimitive(PrimitiveType.Cone);
+        GameObject arrow = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
         arrow.transform.localScale = new Vector3(0.2f, 0.3f, 0.2f);
 
         // Remove collider

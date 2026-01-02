@@ -3,14 +3,7 @@ using SUPERCharacter;
 
 public class BuildModeController : MonoBehaviour
 {
-    [Header("References")]
-    public BuildingSystem buildingSystem;
-    public BuildModeCameraController cameraController;
-    public DirectionalArrowSystem arrowSystem;
-    public BlockAdjacencyGrid adjacencyGrid;
-
     [Header("Settings")]
-    public KeyCode enterBuildModeKey = KeyCode.B;
     public KeyCode exitBuildModeKey = KeyCode.Escape;
     public float blockPlacementDelay = 0.15f;
 
@@ -26,27 +19,12 @@ public class BuildModeController : MonoBehaviour
     {
         if (GameManager.Instance != null)
         {
-            buildingSystem = GameManager.Instance.buildingSystem;
             playerController = GameManager.Instance.playerController;
         }
-
-        if (cameraController == null)
-            cameraController = GetComponent<BuildModeCameraController>();
-        if (arrowSystem == null)
-            arrowSystem = GetComponent<DirectionalArrowSystem>();
-        if (adjacencyGrid == null)
-            adjacencyGrid = GetComponent<BlockAdjacencyGrid>();
     }
 
     void Update()
     {
-        // Handle build mode entry when not in build mode
-        if (!isInBuildMode && Input.GetKeyDown(enterBuildModeKey))
-        {
-            PlaceFirstBlockAndEnterBuildMode();
-            return;
-        }
-
         // Only process build mode input when in build mode
         if (!isInBuildMode) return;
 
@@ -71,56 +49,6 @@ public class BuildModeController : MonoBehaviour
         }
     }
 
-    private void PlaceFirstBlockAndEnterBuildMode()
-    {
-        if (buildingSystem == null || playerController == null)
-        {
-            Debug.LogError("BuildModeController: BuildingSystem or PlayerController is missing!");
-            return;
-        }
-
-        // Calculate spawn position in front of player
-        Vector3 spawnPosition = playerController.transform.position +
-                               playerController.transform.forward * 2f;
-
-        // Round to grid
-        spawnPosition = new Vector3(
-            Mathf.Round(spawnPosition.x * 2f) / 2f,
-            Mathf.Round(spawnPosition.y * 2f) / 2f,
-            Mathf.Round(spawnPosition.z * 2f) / 2f
-        );
-
-        // Check if position is occupied
-        if (adjacencyGrid != null && adjacencyGrid.IsPositionOccupied(spawnPosition))
-        {
-            Debug.Log("BuildModeController: Cannot place first block - position occupied!");
-            return;
-        }
-
-        // Check block limit
-        if (buildingSystem.CurrentBlockCount >= buildingSystem.maxBlocks)
-        {
-            Debug.Log($"BuildModeController: Block limit ({buildingSystem.maxBlocks}) reached!");
-            return;
-        }
-
-        // Instantiate first block
-        GameObject firstBlock = Instantiate(buildingSystem.cubePrefab, spawnPosition, Quaternion.identity);
-        firstBlock.transform.localScale = Vector3.one;
-
-        // Enable collider
-        Collider blockCollider = firstBlock.GetComponent<Collider>();
-        if (blockCollider != null)
-            blockCollider.enabled = true;
-
-        // Register with building system
-        if (adjacencyGrid != null)
-            adjacencyGrid.RegisterBlock(firstBlock, spawnPosition);
-
-        // Enter build mode with this block
-        EnterBuildMode(firstBlock);
-    }
-
     public void EnterBuildMode(GameObject firstBlock)
     {
         if (isInBuildMode) return;
@@ -133,12 +61,12 @@ public class BuildModeController : MonoBehaviour
             playerController.controllerPaused = true;
 
         // Focus camera on block
-        if (cameraController != null)
-            cameraController.FocusOnBlock(firstBlock);
+        if (GameManager.Instance != null && GameManager.Instance.buildCameraController != null)
+            GameManager.Instance.buildCameraController.FocusOnBlock(firstBlock);
 
         // Show arrows
-        if (arrowSystem != null && playerController != null)
-            arrowSystem.ShowArrows(firstBlock, playerController.playerCamera);
+        if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
+            GameManager.Instance.arrowSystem.ShowArrows(firstBlock, playerController.playerCamera);
 
         Debug.Log("BuildModeController: Entered Build Mode - Press ESC to exit, WASD to place blocks");
     }
@@ -155,21 +83,22 @@ public class BuildModeController : MonoBehaviour
             playerController.controllerPaused = false;
 
         // Restore camera
-        if (cameraController != null)
-            cameraController.RestoreNormalCamera();
+        if (GameManager.Instance != null && GameManager.Instance.buildCameraController != null)
+            GameManager.Instance.buildCameraController.RestoreNormalCamera();
 
         // Hide arrows
-        if (arrowSystem != null)
-            arrowSystem.HideArrows();
+        if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
+            GameManager.Instance.arrowSystem.HideArrows();
 
         Debug.Log("BuildModeController: Exited Build Mode");
     }
 
     private void PlaceBlockInDirection(KeyCode key)
     {
-        if (currentSelectedBlock == null || arrowSystem == null) return;
+        if (GameManager.Instance == null) return;
+        if (currentSelectedBlock == null || GameManager.Instance.arrowSystem == null) return;
 
-        Vector3 direction = arrowSystem.GetPlacementDirection(key);
+        Vector3 direction = GameManager.Instance.arrowSystem.GetPlacementDirection(key);
         if (direction == Vector3.zero) return;
 
         Vector3 newPosition = currentSelectedBlock.transform.position + direction * gridSize;
@@ -182,21 +111,21 @@ public class BuildModeController : MonoBehaviour
         );
 
         // Check if position occupied
-        if (adjacencyGrid != null && adjacencyGrid.IsPositionOccupied(newPosition))
+        if (GameManager.Instance.adjacencyGrid != null && GameManager.Instance.adjacencyGrid.IsPositionOccupied(newPosition))
         {
             Debug.Log("BuildModeController: Position already occupied!");
             return;
         }
 
         // Check block limit
-        if (buildingSystem.CurrentBlockCount >= buildingSystem.maxBlocks)
+        if (GameManager.Instance.buildingSystem.CurrentBlockCount >= GameManager.Instance.buildingSystem.maxBlocks)
         {
-            Debug.Log($"BuildModeController: Block limit ({buildingSystem.maxBlocks}) reached!");
+            Debug.Log($"BuildModeController: Block limit ({GameManager.Instance.buildingSystem.maxBlocks}) reached!");
             return;
         }
 
         // Place new block
-        GameObject newBlock = Instantiate(buildingSystem.cubePrefab, newPosition, Quaternion.identity);
+        GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, Quaternion.identity);
         newBlock.transform.localScale = Vector3.one;
 
         // Enable collider
@@ -205,8 +134,8 @@ public class BuildModeController : MonoBehaviour
             blockCollider.enabled = true;
 
         // Register with adjacency grid
-        if (adjacencyGrid != null)
-            adjacencyGrid.RegisterBlock(newBlock, newPosition);
+        if (GameManager.Instance.adjacencyGrid != null)
+            GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, newPosition);
 
         // Select this block and update camera/arrows
         SelectBlock(newBlock);
@@ -217,10 +146,10 @@ public class BuildModeController : MonoBehaviour
     {
         currentSelectedBlock = newBlock;
 
-        if (cameraController != null)
-            cameraController.FocusOnBlock(newBlock);
+        if (GameManager.Instance != null && GameManager.Instance.buildCameraController != null)
+            GameManager.Instance.buildCameraController.FocusOnBlock(newBlock);
 
-        if (arrowSystem != null && playerController != null)
-            arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
+        if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
+            GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
     }
 }

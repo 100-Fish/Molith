@@ -130,6 +130,13 @@ public class BuildingSystem : MonoBehaviour
 
     void HandlePlacementInput()
     {
+        // Don't allow placement if in build mode
+        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        {
+            if (GameManager.Instance.buildModeController.IsInBuildMode)
+                return;
+        }
+
         if (isDestructionMode)
             return;
 
@@ -390,6 +397,18 @@ public class BuildingSystem : MonoBehaviour
 
         Destroy(currentPreview);
         currentPreview = null;
+
+        // Register with adjacency grid
+        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
+        {
+            GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, roundedPosition);
+        }
+
+        // Trigger build mode after placing first block
+        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        {
+            GameManager.Instance.buildModeController.EnterBuildMode(newBlock);
+        }
     }
 
     void DestroyBlocksInRadius()

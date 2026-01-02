@@ -32,6 +32,21 @@ public class GameManager : MonoBehaviour
     [Tooltip("Reference to the SUPERCharacterAIO script on the player")]
     public SUPERCharacterAIO playerController;
 
+    [Tooltip("Reference to the BuildModeController")]
+    public BuildModeController buildModeController;
+
+    [Tooltip("Reference to the DirectionalArrowSystem")]
+    public DirectionalArrowSystem arrowSystem;
+
+    [Tooltip("Reference to the BuildModeCameraController")]
+    public BuildModeCameraController buildCameraController;
+
+    [Tooltip("Reference to the BlockAdjacencyGrid")]
+    public BlockAdjacencyGrid adjacencyGrid;
+
+    [Tooltip("Reference to the CameraManager")]
+    public CameraManager cameraManager;
+
     [Header("Color Scheme")]
     [Tooltip("Default UI color (white)")]
     public Color defaultColor = Color.white;
@@ -83,6 +98,37 @@ public class GameManager : MonoBehaviour
             playerController = FindObjectOfType<SUPERCharacterAIO>();
         }
 
+        if (buildModeController == null)
+        {
+            Debug.LogWarning("GameManager: BuildModeController reference is missing. Attempting to find it...");
+            buildModeController = FindObjectOfType<BuildModeController>();
+        }
+
+        if (arrowSystem == null)
+        {
+            Debug.LogWarning("GameManager: DirectionalArrowSystem reference is missing. Attempting to find it...");
+            arrowSystem = FindObjectOfType<DirectionalArrowSystem>();
+        }
+
+        if (buildCameraController == null)
+        {
+            Debug.LogWarning("GameManager: BuildModeCameraController reference is missing. Attempting to find it...");
+            buildCameraController = FindObjectOfType<BuildModeCameraController>();
+        }
+
+        if (adjacencyGrid == null)
+        {
+            Debug.LogWarning("GameManager: BlockAdjacencyGrid reference is missing. Attempting to find it...");
+            adjacencyGrid = FindObjectOfType<BlockAdjacencyGrid>();
+        }
+
+        if (cameraManager == null)
+        {
+            Debug.LogWarning("GameManager: CameraManager reference is missing. Attempting to find it...");
+            cameraManager = FindObjectOfType<CameraManager>();
+        }
+
+        // Error logging for critical systems
         if (buildingSystem == null)
             Debug.LogError("GameManager: BuildingSystem could not be found!");
 
@@ -91,5 +137,8 @@ public class GameManager : MonoBehaviour
 
         if (playerController == null)
             Debug.LogError("GameManager: PlayerController could not be found!");
+
+        if (cameraManager == null)
+            Debug.LogError("GameManager: CameraManager could not be found!");
     }
 }

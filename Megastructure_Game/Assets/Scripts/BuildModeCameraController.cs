@@ -1,6 +1,4 @@
 using UnityEngine;
-using System.Collections;
-using DG.Tweening;
 using SUPERCharacter;
 
 public class BuildModeCameraController : MonoBehaviour
@@ -12,7 +10,8 @@ public class BuildModeCameraController : MonoBehaviour
 
     private SUPERCharacterAIO playerController;
     private GameObject targetBlock;
-    private Vector3 savedPlayerPosition;
+    private Vector3 savedCameraPosition;
+    private Quaternion savedCameraRotation;
     private bool wasControlEnabled;
 
     void Start()
@@ -25,12 +24,14 @@ public class BuildModeCameraController : MonoBehaviour
 
     public void FocusOnBlock(GameObject block)
     {
+        if (GameManager.Instance == null || GameManager.Instance.cameraManager == null) return;
         if (playerController == null || block == null) return;
 
         targetBlock = block;
 
-        // Save current state
-        savedPlayerPosition = playerController.transform.position;
+        // Save current camera state
+        savedCameraPosition = GameManager.Instance.cameraManager.GetPosition();
+        savedCameraRotation = GameManager.Instance.cameraManager.GetRotation();
         wasControlEnabled = playerController.enableCameraControl;
 
         // Calculate camera target position
@@ -39,34 +40,27 @@ public class BuildModeCameraController : MonoBehaviour
 
         // Calculate rotation to look at block
         Vector3 directionToBlock = (blockPosition - targetCameraPosition).normalized;
-        float targetPitch = Mathf.Asin(-directionToBlock.y) * Mathf.Rad2Deg;
-        float targetYaw = Mathf.Atan2(directionToBlock.x, directionToBlock.z) * Mathf.Rad2Deg;
-        Vector3 targetRotation = new Vector3(targetPitch, targetYaw, 0);
+        Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
 
         // Disable camera control temporarily
         playerController.enableCameraControl = false;
 
-        // Smoothly rotate camera
-        playerController.RotateView(targetRotation, smooth: true);
-
-        // Move player near block for camera orbit
-        Vector3 playerTargetPosition = blockPosition + Vector3.down * 1.5f;
-        playerController.transform.DOMove(playerTargetPosition, transitionDuration)
-            .SetEase(Ease.InOutQuad);
+        // Use CameraManager to move and focus on block
+        GameManager.Instance.cameraManager.FocusOn(blockPosition, cameraOffset, transitionDuration);
     }
 
     public void RestoreNormalCamera()
     {
+        if (GameManager.Instance == null || GameManager.Instance.cameraManager == null) return;
         if (playerController == null) return;
 
         // Restore camera control
         playerController.enableCameraControl = wasControlEnabled;
 
-        // Move player back to original position
-        if (savedPlayerPosition != Vector3.zero)
+        // Move camera back to original position
+        if (savedCameraPosition != Vector3.zero)
         {
-            playerController.transform.DOMove(savedPlayerPosition, transitionDuration)
-                .SetEase(Ease.InOutQuad);
+            GameManager.Instance.cameraManager.SetCameraTransform(savedCameraPosition, savedCameraRotation);
         }
 
         targetBlock = null;
