@@ -154,23 +154,25 @@ public class DirectionalArrowSystem : MonoBehaviour
 
         if (showHorizontal)
         {
-            // Horizontal mode - quantize to cardinal directions
+            // Horizontal mode - quantize to 8 diagonal directions
             Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
             Vector3 camRightFlat = new Vector3(playerCamera.transform.right.x, 0, playerCamera.transform.right.z).normalized;
 
             // W = forward, A = left, S = back, D = right (relative to camera)
-            newCardinalDirections[0] = QuantizeToCardinal(camForwardFlat);
-            newCardinalDirections[1] = QuantizeToCardinal(-camRightFlat);
-            newCardinalDirections[2] = QuantizeToCardinal(-camForwardFlat);
-            newCardinalDirections[3] = QuantizeToCardinal(camRightFlat);
+            newCardinalDirections[0] = QuantizeTo8Directions(camForwardFlat);
+            newCardinalDirections[1] = QuantizeTo8Directions(-camRightFlat);
+            newCardinalDirections[2] = QuantizeTo8Directions(-camForwardFlat);
+            newCardinalDirections[3] = QuantizeTo8Directions(camRightFlat);
         }
         else
         {
-            // Vertical mode - already cardinal
-            newCardinalDirections[0] = Vector3.up;
-            newCardinalDirections[1] = Vector3.left;
-            newCardinalDirections[2] = Vector3.down;
-            newCardinalDirections[3] = Vector3.right;
+            // Vertical mode - use 3D diagonal quantization
+            Vector3 camForwardFull = playerCamera.transform.forward;
+
+            newCardinalDirections[0] = QuantizeTo3DDiagonals(camForwardFull);
+            newCardinalDirections[1] = QuantizeTo3DDiagonals(Quaternion.Euler(0, -90, 0) * camForwardFull);
+            newCardinalDirections[2] = QuantizeTo3DDiagonals(-camForwardFull);
+            newCardinalDirections[3] = QuantizeTo3DDiagonals(Quaternion.Euler(0, 90, 0) * camForwardFull);
         }
 
         // Calculate target world positions based on cardinal directions
@@ -240,27 +242,29 @@ public class DirectionalArrowSystem : MonoBehaviour
 
         if (isHorizontal)
         {
-            // Horizontal mode - quantize camera yaw to nearest cardinal direction
+            // Horizontal mode - quantize camera yaw to nearest 45-degree direction
             Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
 
             switch (key)
             {
-                case KeyCode.W: return QuantizeToCardinal(camForwardFlat);
-                case KeyCode.A: return QuantizeToCardinal(Quaternion.Euler(0, -90, 0) * camForwardFlat);
-                case KeyCode.S: return QuantizeToCardinal(-camForwardFlat);
-                case KeyCode.D: return QuantizeToCardinal(Quaternion.Euler(0, 90, 0) * camForwardFlat);
+                case KeyCode.W: return QuantizeTo8Directions(camForwardFlat);
+                case KeyCode.A: return QuantizeTo8Directions(Quaternion.Euler(0, -90, 0) * camForwardFlat);
+                case KeyCode.S: return QuantizeTo8Directions(-camForwardFlat);
+                case KeyCode.D: return QuantizeTo8Directions(Quaternion.Euler(0, 90, 0) * camForwardFlat);
                 default: return Vector3.zero;
             }
         }
         else
         {
-            // Vertical mode - already cardinal
+            // Vertical mode - use 3D diagonal quantization
+            Vector3 camForwardFull = playerCamera.transform.forward;
+
             switch (key)
             {
-                case KeyCode.W: return Vector3.up;
-                case KeyCode.A: return Vector3.left;
-                case KeyCode.S: return Vector3.down;
-                case KeyCode.D: return Vector3.right;
+                case KeyCode.W: return QuantizeTo3DDiagonals(camForwardFull);
+                case KeyCode.A: return QuantizeTo3DDiagonals(Quaternion.Euler(0, -90, 0) * camForwardFull);
+                case KeyCode.S: return QuantizeTo3DDiagonals(-camForwardFull);
+                case KeyCode.D: return QuantizeTo3DDiagonals(Quaternion.Euler(0, 90, 0) * camForwardFull);
                 default: return Vector3.zero;
             }
         }
@@ -268,20 +272,102 @@ public class DirectionalArrowSystem : MonoBehaviour
 
     private Vector3 QuantizeToCardinal(Vector3 direction)
     {
-        // Snap to nearest world axis (forward/back/left/right)
-        float absX = Mathf.Abs(direction.x);
-        float absZ = Mathf.Abs(direction.z);
+        // Normalize to horizontal plane
+        direction.y = 0;
+        if (direction == Vector3.zero) return Vector3.forward;
 
-        if (absX > absZ)
+        direction.Normalize();
+
+        // Calculate angle from forward (0° = North)
+        float angle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+        if (angle < 0) angle += 360;
+
+        // Snap to nearest 90-degree angle (cardinal directions only)
+        int sector = Mathf.RoundToInt(angle / 90f) % 4;
+
+        switch (sector)
         {
-            // Closer to X axis
-            return direction.x > 0 ? Vector3.right : Vector3.left;
+            case 0: return Vector3.forward;              // N
+            case 1: return Vector3.right;                // E
+            case 2: return Vector3.back;                 // S
+            case 3: return Vector3.left;                 // W
+            default: return Vector3.forward;
         }
-        else
+    }
+
+    private Vector3 QuantizeTo8Directions(Vector3 direction)
+    {
+        // Normalize to horizontal plane
+        direction.y = 0;
+        if (direction == Vector3.zero) return Vector3.forward;
+
+        direction.Normalize();
+
+        // Calculate angle from forward (0° = North)
+        float angle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
+        if (angle < 0) angle += 360;
+
+        // Snap to nearest 45-degree angle
+        // 0° = N, 45° = NE, 90° = E, 135° = SE, etc.
+        int sector = Mathf.RoundToInt(angle / 45f) % 8;
+
+        switch (sector)
         {
-            // Closer to Z axis
-            return direction.z > 0 ? Vector3.forward : Vector3.back;
+            case 0: return Vector3.forward;              // N
+            case 1: return (Vector3.forward + Vector3.right).normalized;  // NE
+            case 2: return Vector3.right;                // E
+            case 3: return (Vector3.back + Vector3.right).normalized;     // SE
+            case 4: return Vector3.back;                 // S
+            case 5: return (Vector3.back + Vector3.left).normalized;      // SW
+            case 6: return Vector3.left;                 // W
+            case 7: return (Vector3.forward + Vector3.left).normalized;   // NW
+            default: return Vector3.forward;
         }
+    }
+
+    private Vector3 QuantizeTo3DDiagonals(Vector3 direction)
+    {
+        if (direction == Vector3.zero) return Vector3.forward;
+
+        direction.Normalize();
+
+        // Separate into vertical and horizontal components
+        float verticalComponent = direction.y;
+        Vector3 horizontalDir = new Vector3(direction.x, 0, direction.z);
+        float horizontalMagnitude = horizontalDir.magnitude;
+
+        // Quantize horizontal to 8 directions (or zero if negligible)
+        Vector3 quantizedHorizontal = Vector3.zero;
+        if (horizontalMagnitude > 0.1f)
+        {
+            horizontalDir.Normalize();
+            float angle = Mathf.Atan2(horizontalDir.x, horizontalDir.z) * Mathf.Rad2Deg;
+            if (angle < 0) angle += 360;
+            int sector = Mathf.RoundToInt(angle / 45f) % 8;
+
+            switch (sector)
+            {
+                case 0: quantizedHorizontal = Vector3.forward; break;
+                case 1: quantizedHorizontal = (Vector3.forward + Vector3.right).normalized; break;
+                case 2: quantizedHorizontal = Vector3.right; break;
+                case 3: quantizedHorizontal = (Vector3.back + Vector3.right).normalized; break;
+                case 4: quantizedHorizontal = Vector3.back; break;
+                case 5: quantizedHorizontal = (Vector3.back + Vector3.left).normalized; break;
+                case 6: quantizedHorizontal = Vector3.left; break;
+                case 7: quantizedHorizontal = (Vector3.forward + Vector3.left).normalized; break;
+            }
+        }
+
+        // Quantize vertical to -1, 0, or +1
+        int verticalQuantized = 0;
+        if (Mathf.Abs(verticalComponent) > 0.3f)
+        {
+            verticalQuantized = verticalComponent > 0 ? 1 : -1;
+        }
+
+        // Combine horizontal and vertical
+        Vector3 result = quantizedHorizontal + Vector3.up * verticalQuantized;
+        return result.normalized;
     }
 
     void OnDestroy()

@@ -112,6 +112,17 @@ public class BuildModeController : MonoBehaviour
             playerController.buildModeOverride = true;
             playerController.buildModeOrbitCenter = firstBlock.transform.position;
 
+            // Rotate player avatar to face the first block (instant snap)
+            Vector3 directionToBlock = firstBlock.transform.position - playerController.transform.position;
+            directionToBlock.y = 0; // Keep rotation on horizontal plane only
+
+            if (directionToBlock != Vector3.zero)
+            {
+                // Calculate target rotation and instantly apply to player avatar
+                Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
+                playerController.transform.rotation = targetRotation;
+            }
+
             // Set increased orbit distance for better view
             playerController.maxCameraDistInternal = playerController.buildModeOrbitDistance;
             playerController.currentCameraZ = -playerController.buildModeOrbitDistance;
@@ -213,22 +224,6 @@ public class BuildModeController : MonoBehaviour
         if (playerController != null)
         {
             playerController.buildModeOrbitCenter = newBlock.transform.position;
-
-            // Rotate player to look at the newly placed block
-            Vector3 directionToBlock = newBlock.transform.position - playerController.transform.position;
-            directionToBlock.y = 0; // Keep rotation on horizontal plane only
-
-            if (directionToBlock != Vector3.zero)
-            {
-                // Calculate the target rotation angle to look at the block
-                float targetYaw = Mathf.Atan2(directionToBlock.x, directionToBlock.z) * Mathf.Rad2Deg;
-
-                // Get current pitch (vertical rotation) from camera
-                float currentPitch = playerController.playerCamera.transform.eulerAngles.x;
-
-                // Rotate view to look at the block (smooth rotation)
-                playerController.RotateView(new Vector3(currentPitch, targetYaw, 0), true);
-            }
         }
 
         // Update arrows
