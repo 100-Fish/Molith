@@ -10,12 +10,59 @@ Shader "FX/Hologram"
         _GlowIntensity ("Glow Intensity", Range(0.01, 1.0)) = 0.5
         _Opacity ("Opacity", Range(0.0, 1.0)) = 0.8
         _FrostAmount ("Frost Amount", Range(0.0, 1.0)) = 0.5
+        _OutlineWidth ("Outline Width", Range(0.0, 0.1)) = 0.03
+        _OutlineOpacity ("Outline Opacity", Range(0.0, 1.0)) = 0.9
     }
 
     SubShader
     {
         Tags{ "Queue" = "Transparent" "IgnoreProjector" = "True" "RenderType" = "Transparent" }
 
+        // Outline Pass (draw first, behind main object)
+        Pass
+        {
+            Name "OUTLINE"
+            Lighting Off
+            ZWrite Off
+            Blend SrcAlpha OneMinusSrcAlpha
+            Cull Front
+
+            CGPROGRAM
+                #pragma vertex vertOutline
+                #pragma fragment fragOutline
+                #include "UnityCG.cginc"
+
+                fixed4 _Color;
+                half _OutlineWidth;
+                half _OutlineOpacity;
+
+                struct appdata {
+                    float4 vertex : POSITION;
+                    float3 normal : NORMAL;
+                };
+
+                struct v2f {
+                    float4 position : SV_POSITION;
+                };
+
+                v2f vertOutline(appdata v) {
+                    v2f o;
+                    // Expand vertices along their normals
+                    float3 norm = normalize(v.normal);
+                    float3 expanded = v.vertex.xyz + norm * _OutlineWidth;
+                    o.position = UnityObjectToClipPos(float4(expanded, 1.0));
+                    return o;
+                }
+
+                fixed4 fragOutline(v2f i) : SV_Target {
+                    fixed4 col = _Color;
+                    col.a = _OutlineOpacity;
+                    return col;
+                }
+            ENDCG
+        }
+
+        // Main hologram Pass
         Pass
         {
             Lighting Off

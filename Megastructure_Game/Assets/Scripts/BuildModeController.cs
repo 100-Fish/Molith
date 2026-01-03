@@ -266,6 +266,21 @@ public class BuildModeController : MonoBehaviour
         GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, blockRotation);
         newBlock.transform.localScale = Vector3.one;
 
+        // Apply hologram material immediately when instantiating in build mode
+        if (hologramMaterial != null && isInBuildMode)
+        {
+            MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
+            if (renderer != null)
+            {
+                Material[] hologramMaterials = new Material[renderer.materials.Length];
+                for (int i = 0; i < hologramMaterials.Length; i++)
+                {
+                    hologramMaterials[i] = hologramMaterial;
+                }
+                renderer.materials = hologramMaterials;
+            }
+        }
+
         // Enable collider (check both parent and children since collider might be on child)
         Collider blockCollider = newBlock.GetComponentInChildren<Collider>();
         if (blockCollider != null)
@@ -297,10 +312,6 @@ public class BuildModeController : MonoBehaviour
         // Update arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
             GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
-
-        // Apply hologram material to newly placed block
-        if (hologramMaterial != null)
-            ApplyHologramMaterialToBlock(newBlock);
     }
 
     /// <summary>

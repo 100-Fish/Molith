@@ -423,12 +423,19 @@ public class BuildingSystem : MonoBehaviour
 
         foreach (Collider col in hitColliders)
         {
+            // Check if the collider's GameObject or its parent is a placed block
             GameObject block = col.gameObject;
 
-            // Only destroy blocks that we've placed
-            if (placedBlocks.Contains(block))
+            // If collider is on a child, get the parent block
+            Transform current = col.transform;
+            while (current != null)
             {
-                blocksToDestroy.Add(block);
+                if (placedBlocks.Contains(current.gameObject))
+                {
+                    blocksToDestroy.Add(current.gameObject);
+                    break;
+                }
+                current = current.parent;
             }
         }
 
