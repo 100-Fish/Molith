@@ -15,6 +15,10 @@ public class BuildModeController : MonoBehaviour
     private float lastPlacementTime = 0f;
     private float gridSize = 1.0f; // Block size
 
+    [Header("Platform Settings")]
+    public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f); // X, Y, Z
+    public int thinAxisIndex = 1; // 0=X, 1=Y, 2=Z (Y-axis is thin)
+
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
 
@@ -163,6 +167,55 @@ public class BuildModeController : MonoBehaviour
         Debug.Log("BuildModeController: Exited Build Mode");
     }
 
+    /// <summary>
+    /// Gets the world-space direction of the platform's thin axis
+    /// </summary>
+    private Vector3 GetPlatformThinAxis(GameObject platform)
+    {
+        Vector3 localThinAxis = Vector3.zero;
+        localThinAxis[thinAxisIndex] = 1f; // e.g., Vector3.up for Y-axis
+        return platform.transform.rotation * localThinAxis;
+    }
+
+    /// <summary>
+    /// Gets the half-extent of a platform in a given direction
+    /// </summary>
+    private float GetPlatformExtentInDirection(GameObject platform, Vector3 direction)
+    {
+        Vector3 thinAxis = GetPlatformThinAxis(platform);
+        float parallelComponent = Mathf.Abs(Vector3.Dot(direction.normalized, thinAxis.normalized));
+
+        if (parallelComponent > 0.9f) // Parallel to thin axis (within ~25 degrees)
+        {
+            return platformLocalDimensions[thinAxisIndex] / 2f; // Half of thin dimension (0.125)
+        }
+        else // Perpendicular to thin axis
+        {
+            return 0.5f; // Half of the 1.0 wide dimension
+        }
+    }
+
+    /// <summary>
+    /// Calculates center-to-center distance for edge-hinged placement
+    /// New platform hinges from the edge of the current platform
+    /// </summary>
+    private float GetPlacementDistance(GameObject currentPlatform, Vector3 placementDirection)
+    {
+        // For edge-hinged placement where platforms share an edge:
+        // Distance = half of current platform's depth + half of new platform's depth
+        // Since both platforms face their placement direction with LookRotation,
+        // the depth is along their local Z axis (1.0 for our 1×0.25×1 platform)
+
+        // Current platform's extent in placement direction (half-depth)
+        float currentExtent = 0.5f; // Half of 1.0 depth
+
+        // New platform's extent (half-depth from its center to hinge edge)
+        float newExtent = 0.5f; // Half of 1.0 depth
+
+        // Total center-to-center distance
+        return currentExtent + newExtent; // = 1.0
+    }
+
     private void PlaceBlockInDirection(KeyCode key)
     {
         if (GameManager.Instance == null) return;
@@ -171,13 +224,14 @@ public class BuildModeController : MonoBehaviour
         Vector3 direction = GameManager.Instance.arrowSystem.GetPlacementDirection(key);
         if (direction == Vector3.zero) return;
 
-        Vector3 newPosition = currentSelectedBlock.transform.position + direction * gridSize;
+        float placementDistance = GetPlacementDistance(currentSelectedBlock, direction);
+        Vector3 newPosition = currentSelectedBlock.transform.position + direction * placementDistance;
 
-        // Round to grid (1.0 increments)
+        // Round to nearest 0.25 increment for consistent grid alignment
         newPosition = new Vector3(
-            Mathf.Round(newPosition.x),
-            Mathf.Round(newPosition.y),
-            Mathf.Round(newPosition.z)
+            Mathf.Round(newPosition.x * 4f) / 4f,
+            Mathf.Round(newPosition.y * 4f) / 4f,
+            Mathf.Round(newPosition.z * 4f) / 4f
         );
 
         // Check if position occupied
@@ -194,15 +248,16 @@ public class BuildModeController : MonoBehaviour
             return;
         }
 
-        // Calculate block rotation based on placement direction
+        // Rotate platform to face the placement direction (like a wall facing you)
+        // Platform's forward (Z) points toward placement direction, Y stays mostly up
         Quaternion blockRotation = Quaternion.LookRotation(direction, Vector3.up);
 
         // Place new block with rotation
         GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, blockRotation);
         newBlock.transform.localScale = Vector3.one;
 
-        // Enable collider
-        Collider blockCollider = newBlock.GetComponent<Collider>();
+        // Enable collider (check both parent and children since collider might be on child)
+        Collider blockCollider = newBlock.GetComponentInChildren<Collider>();
         if (blockCollider != null)
             blockCollider.enabled = true;
 

@@ -198,13 +198,13 @@ public class BuildingSystem : MonoBehaviour
 
         currentPreview = Instantiate(cubePrefab);
 
-        Collider previewCollider = currentPreview.GetComponent<Collider>();
+        Collider previewCollider = currentPreview.GetComponentInChildren<Collider>();
         if (previewCollider != null)
         {
             previewCollider.enabled = false;
         }
 
-        MeshRenderer renderer = currentPreview.GetComponent<MeshRenderer>();
+        MeshRenderer renderer = currentPreview.GetComponentInChildren<MeshRenderer>();
         if (renderer != null && previewMaterialInstance != null)
         {
             Material[] previewMaterials = new Material[renderer.materials.Length];
@@ -356,11 +356,11 @@ public class BuildingSystem : MonoBehaviour
             return;
         }
 
-        // Round position to nearest 1.0
+        // Round position to nearest 0.25 increment
         Vector3 roundedPosition = new Vector3(
-            Mathf.Round(previewPosition.x),
-            Mathf.Round(previewPosition.y),
-            Mathf.Round(previewPosition.z)
+            Mathf.Round(previewPosition.x * 4f) / 4f,
+            Mathf.Round(previewPosition.y * 4f) / 4f,
+            Mathf.Round(previewPosition.z * 4f) / 4f
         );
 
         // Keep scale at 1.0 (constant size)
@@ -370,16 +370,16 @@ public class BuildingSystem : MonoBehaviour
 
         newBlock.transform.localScale = Vector3.one * roundedScale;
 
-        Collider blockCollider = newBlock.GetComponent<Collider>();
+        Collider blockCollider = newBlock.GetComponentInChildren<Collider>();
         if (blockCollider != null)
         {
             blockCollider.enabled = true;
         }
 
-        MeshRenderer renderer = newBlock.GetComponent<MeshRenderer>();
+        MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
         if (renderer != null)
         {
-            MeshRenderer prefabRenderer = cubePrefab.GetComponent<MeshRenderer>();
+            MeshRenderer prefabRenderer = cubePrefab.GetComponentInChildren<MeshRenderer>();
             if (prefabRenderer != null)
             {
                 renderer.materials = prefabRenderer.sharedMaterials;

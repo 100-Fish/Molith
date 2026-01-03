@@ -11,13 +11,11 @@ public class DirectionalArrowSystem : MonoBehaviour
     [Header("Arrow Settings")]
     public float arrowOffset = 0.6f;
     public float snapDuration = 0.3f; // DOTween duration for smooth snapping
-    public Color[] wasdColors = new Color[] {
-        new Color(1f, 1f, 0f, 1f),    // W - Yellow
-        new Color(0f, 1f, 1f, 1f),    // A - Cyan
-        new Color(0f, 1f, 0f, 1f),    // S - Green
-        new Color(1f, 0f, 1f, 1f)     // D - Magenta
-    };
     public string[] wasdLabels = new string[] { "W", "A", "S", "D" };
+
+    [Header("Platform Configuration")]
+    public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f);
+    public int thinAxisIndex = 1; // Y-axis is thin
 
     private GameObject currentBlock;
     private Camera playerCamera;
@@ -73,7 +71,7 @@ public class DirectionalArrowSystem : MonoBehaviour
         textMesh.text = wasdLabels[index];
         textMesh.fontSize = 36;
         textMesh.alignment = TextAlignmentOptions.Center;
-        textMesh.color = wasdColors[index];
+        // textMesh.color = wasdColors[index];
         textMesh.fontStyle = FontStyles.Bold;
 
         // Add outline for visibility
@@ -138,12 +136,39 @@ public class DirectionalArrowSystem : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Gets the world-space direction of the platform's thin axis
+    /// </summary>
+    private Vector3 GetPlatformThinAxis(GameObject platform)
+    {
+        Vector3 localThinAxis = Vector3.zero;
+        localThinAxis[thinAxisIndex] = 1f;
+        return platform.transform.rotation * localThinAxis;
+    }
+
+    /// <summary>
+    /// Gets the half-extent of a platform in a given direction
+    /// </summary>
+    private float GetPlatformExtentInDirection(GameObject platform, Vector3 direction)
+    {
+        Vector3 thinAxis = GetPlatformThinAxis(platform);
+        float parallelComponent = Mathf.Abs(Vector3.Dot(direction.normalized, thinAxis.normalized));
+
+        if (parallelComponent > 0.9f) // Parallel to thin axis
+        {
+            return platformLocalDimensions[thinAxisIndex] / 2f; // 0.125
+        }
+        else // Perpendicular
+        {
+            return 0.5f; // Half of 1.0 dimension
+        }
+    }
+
     private void UpdateArrowPositions()
     {
         if (currentBlock == null || playerCamera == null) return;
 
         Vector3 blockCenter = currentBlock.transform.position;
-        float blockSize = currentBlock.transform.localScale.x;
 
         // Determine camera orientation
         Vector3 camForward = playerCamera.transform.forward;
@@ -178,7 +203,8 @@ public class DirectionalArrowSystem : MonoBehaviour
         // Calculate target world positions based on cardinal directions
         for (int i = 0; i < 4; i++)
         {
-            Vector3 newTargetWorldPos = blockCenter + newCardinalDirections[i] * (blockSize / 2 + arrowOffset);
+            float platformExtent = GetPlatformExtentInDirection(currentBlock, newCardinalDirections[i]);
+            Vector3 newTargetWorldPos = blockCenter + newCardinalDirections[i] * (platformExtent + arrowOffset);
 
             // Check if cardinal direction changed - if so, use DOTween
             if (currentCardinalDirections[i] != newCardinalDirections[i])
