@@ -78,20 +78,43 @@
     <Compile Include="Assets\Plugins\Demigiant\DOTween\Modules\DOTweenModuleSprite.cs" />
     <Compile Include="Assets\Plugins\SUPER Character Controller\Demo Assets\Scripts\Collectable.cs" />
     <Compile Include="Assets\Plugins\SUPER Character Controller\SUPER Character Controller\SUPERCharacterAIO.cs" />
+    <Compile Include="Assets\Plugins\PSXShaderKit\Scripts\PSXPostProcessEffect.cs" />
     <Compile Include="Assets\Plugins\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\CollectableGem.cs" />
     <Compile Include="Assets\Plugins\RogueNoodle\GBCamera\Example Elements\Scripts\Rotate.cs" />
+    <Compile Include="Assets\Plugins\PSXShaderKit\Scripts\PSXShaderManager.cs" />
     <Compile Include="Assets\Plugins\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\MovingPlatform.cs" />
     <Compile Include="Assets\Plugins\RogueNoodle\GBCamera\Example Elements\Scripts\RandomPaletteButton.cs" />
     <Compile Include="Assets\Plugins\Demigiant\DOTween\Modules\DOTweenModuleUI.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-VertexLitTransparentCutout.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-UnlitTransparentCutout.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Lite-UnlitTransparentCutout.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\ImageEffects\PSX-Pixelation.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\ImageEffects\PSX-Interlacing.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-ShaderSrc-Lite.cginc" />
     <None Include="Assets\Plugins\Demigiant\DOTween\DOTween.XML" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Utils.cginc" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-VertexLit.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\ImageEffects\PSX-Dithering.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\ImageEffects\PSX-PostProcess.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Lite-VertexLitTransparentCutout.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Lite-UnlitTransparent.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-VertexLitTransparent.shader" />
     <None Include="Assets\Plugins\Demigiant\DOTween\DOTween.dll" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-ShaderSrc.cginc" />
     <None Include="Assets\Plugins\RogueNoodle\GBCamera\Shaders\GBPalette_UI.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Unlit Transparent.shader" />
     <None Include="Assets\Plugins\RogueNoodle\GBCamera\Shaders\GBPalette.shader" />
     <None Include="Assets\Plugins\RogueNoodle\GBCamera\readme.txt" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Unlit.shader" />
     <None Include="Assets\Plugins\Demigiant\DOTween\readme.txt" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-UnlitTransparent.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Lite-VertexLit.shader" />
     <None Include="Assets\Plugins\RogueNoodle\GBCamera\Example Elements\Shaders\VertexColor.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\ImageEffects\PSX-PostProcess-Accurate.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Lite-Unlit.shader" />
+    <None Include="Assets\Plugins\PSXShaderKit\Shaders\PSX-Lite-VertexLitTransparent.shader" />
     <None Include="Assets\Plugins\SUPER Character Controller\Demo Assets\README.txt" />
   </ItemGroup>
   <ItemGroup>
