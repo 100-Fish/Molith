@@ -270,31 +270,6 @@ public class DirectionalArrowSystem : MonoBehaviour
         }
     }
 
-    private Vector3 QuantizeToCardinal(Vector3 direction)
-    {
-        // Normalize to horizontal plane
-        direction.y = 0;
-        if (direction == Vector3.zero) return Vector3.forward;
-
-        direction.Normalize();
-
-        // Calculate angle from forward (0° = North)
-        float angle = Mathf.Atan2(direction.x, direction.z) * Mathf.Rad2Deg;
-        if (angle < 0) angle += 360;
-
-        // Snap to nearest 90-degree angle (cardinal directions only)
-        int sector = Mathf.RoundToInt(angle / 90f) % 4;
-
-        switch (sector)
-        {
-            case 0: return Vector3.forward;              // N
-            case 1: return Vector3.right;                // E
-            case 2: return Vector3.back;                 // S
-            case 3: return Vector3.left;                 // W
-            default: return Vector3.forward;
-        }
-    }
-
     private Vector3 QuantizeTo8Directions(Vector3 direction)
     {
         // Normalize to horizontal plane

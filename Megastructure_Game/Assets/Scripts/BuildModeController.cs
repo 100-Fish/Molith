@@ -194,8 +194,11 @@ public class BuildModeController : MonoBehaviour
             return;
         }
 
-        // Place new block
-        GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, Quaternion.identity);
+        // Calculate block rotation based on placement direction
+        Quaternion blockRotation = Quaternion.LookRotation(direction, Vector3.up);
+
+        // Place new block with rotation
+        GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, blockRotation);
         newBlock.transform.localScale = Vector3.one;
 
         // Enable collider
