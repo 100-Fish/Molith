@@ -19,8 +19,12 @@ public class BuildModeController : MonoBehaviour
     public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f); // X, Y, Z
     public int thinAxisIndex = 1; // 0=X, 1=Y, 2=Z (Y-axis is thin)
 
+    [Header("Visual Settings")]
+    public Material hologramMaterial; // Hologram material to apply in build mode
+
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
+    private System.Collections.Generic.Dictionary<GameObject, Material[]> originalMaterials = new System.Collections.Generic.Dictionary<GameObject, Material[]>();
 
     void Awake()
     {
@@ -139,6 +143,9 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
             GameManager.Instance.arrowSystem.ShowArrows(firstBlock, playerController.playerCamera);
 
+        // Apply hologram materials to all placed blocks
+        ApplyHologramMaterialsToAllBlocks();
+
         Debug.Log("BuildModeController: Entered Build Mode - Press SPACE to exit, WASD to place blocks");
     }
 
@@ -163,6 +170,9 @@ public class BuildModeController : MonoBehaviour
         // Hide arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
             GameManager.Instance.arrowSystem.HideArrows();
+
+        // Restore original materials to all blocks
+        RestoreOriginalMaterials();
 
         Debug.Log("BuildModeController: Exited Build Mode");
     }
@@ -287,5 +297,82 @@ public class BuildModeController : MonoBehaviour
         // Update arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
             GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
+
+        // Apply hologram material to newly placed block
+        if (hologramMaterial != null)
+            ApplyHologramMaterialToBlock(newBlock);
+    }
+
+    /// <summary>
+    /// Applies hologram material to all placed blocks
+    /// </summary>
+    private void ApplyHologramMaterialsToAllBlocks()
+    {
+        if (hologramMaterial == null || GameManager.Instance == null || GameManager.Instance.buildingSystem == null)
+            return;
+
+        // Get all placed blocks from BuildingSystem
+        var buildingSystem = GameManager.Instance.buildingSystem;
+        if (buildingSystem == null) return;
+
+        // We need to access the placed blocks - let's use reflection or add a public property
+        // For now, let's iterate through all GameObjects with the block tag or find them
+        GameObject[] allBlocks = GameObject.FindGameObjectsWithTag("Block");
+
+        foreach (GameObject block in allBlocks)
+        {
+            if (block != null)
+                ApplyHologramMaterialToBlock(block);
+        }
+    }
+
+    /// <summary>
+    /// Applies hologram material to a single block
+    /// </summary>
+    private void ApplyHologramMaterialToBlock(GameObject block)
+    {
+        if (hologramMaterial == null || block == null)
+            return;
+
+        MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
+        if (renderer != null)
+        {
+            // Save original materials if not already saved
+            if (!originalMaterials.ContainsKey(block))
+            {
+                originalMaterials[block] = renderer.materials;
+            }
+
+            // Apply hologram material to all material slots
+            Material[] hologramMaterials = new Material[renderer.materials.Length];
+            for (int i = 0; i < hologramMaterials.Length; i++)
+            {
+                hologramMaterials[i] = hologramMaterial;
+            }
+            renderer.materials = hologramMaterials;
+        }
+    }
+
+    /// <summary>
+    /// Restores original materials to all blocks
+    /// </summary>
+    private void RestoreOriginalMaterials()
+    {
+        foreach (var kvp in originalMaterials)
+        {
+            GameObject block = kvp.Key;
+            Material[] materials = kvp.Value;
+
+            if (block != null)
+            {
+                MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
+                if (renderer != null)
+                {
+                    renderer.materials = materials;
+                }
+            }
+        }
+
+        originalMaterials.Clear();
     }
 }

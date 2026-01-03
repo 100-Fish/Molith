@@ -51,14 +51,14 @@ public class GameManager : MonoBehaviour
     [Tooltip("Default UI color (white)")]
     public Color defaultColor = Color.white;
 
-    [Tooltip("Placement mode color (cyan)")]
+    [Tooltip("Placement/Build mode color (cyan) - used for both placement preview and build mode")]
     public Color placementColor = new Color(0, 1, 1, 0.5f);
 
     [Tooltip("Destruction mode color (red)")]
     public Color destructionColor = new Color(1, 0, 0, 0.5f);
 
-    [Tooltip("Build mode color (blue)")]
-    public Color buildModeColor = new Color(0.3f, 0.6f, 1f, 1f);
+    // Build mode uses the same color as placement mode
+    public Color buildModeColor => placementColor;
 
     void Awake()
     {

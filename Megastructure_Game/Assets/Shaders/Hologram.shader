@@ -8,8 +8,8 @@ Shader "FX/Hologram"
         _Scale ("Alpha Tiling", Float) = 3
         _ScrollSpeedV("Alpha Scroll Speed", Range(0, 5.0)) = 1.0
         _GlowIntensity ("Glow Intensity", Range(0.01, 1.0)) = 0.5
-        _GlitchSpeed ("Glitch Speed", Range(0, 50)) = 50.0
-        _GlitchIntensity ("Glitch Intensity", Range(0.0, 0.1)) = 0
+        _Opacity ("Opacity", Range(0.0, 1.0)) = 0.8
+        _FrostAmount ("Frost Amount", Range(0.0, 1.0)) = 0.5
     }
 
     SubShader
@@ -46,13 +46,10 @@ Shader "FX/Hologram"
 
                 fixed4 _Color, _MainTex_ST;
                 sampler2D _MainTex, _AlphaTexture;
-                half _Scale, _ScrollSpeedV, _GlowIntensity, _GlitchSpeed, _GlitchIntensity;
+                half _Scale, _ScrollSpeedV, _GlowIntensity, _Opacity, _FrostAmount;
 
                 v2f vertexFunc(appdata IN){
                     v2f OUT;
-
-                    // Glitch effect
-                    IN.vertex.z += sin(_Time.y * _GlitchSpeed * 5 * IN.vertex.y) * _GlitchIntensity;
 
                     OUT.position = UnityObjectToClipPos(IN.vertex);
                     OUT.uv = TRANSFORM_TEX(IN.uv, _MainTex);
@@ -71,16 +68,20 @@ Shader "FX/Hologram"
 
                 fixed4 fragmentFunc(v2f IN) : SV_Target{
 
-                    half dirVertex = (dot(IN.grabPos, 1.0) + 1) / 2;
-
                     fixed4 alphaColor = tex2D(_AlphaTexture,  IN.grabPos.xy * _Scale);
                     fixed4 pixelColor = tex2D (_MainTex, IN.uv);
-                    pixelColor.a = alphaColor.a * 0.5;
 
-                    // Rim Light
+                    // Rim Light for frosted glass edge effect
                     half rim = 1.0 - saturate(dot(IN.viewDir, IN.worldNormal));
+                    half rimEffect = pow(rim, 2.0) * _FrostAmount;
 
-                    return pixelColor * _Color * (rim + _GlowIntensity);
+                    // Combine base color with rim and glow
+                    fixed4 finalColor = _Color * (1.0 + rimEffect + _GlowIntensity);
+
+                    // Apply scrolling alpha pattern with base opacity
+                    finalColor.a = alphaColor.a * _Opacity;
+
+                    return finalColor;
                 }
             ENDCG
         }
