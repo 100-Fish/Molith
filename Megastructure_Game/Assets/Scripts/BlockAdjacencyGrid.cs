@@ -6,6 +6,11 @@ public class BlockAdjacencyGrid : MonoBehaviour
     private Dictionary<Vector3Int, GameObject> blockGrid = new Dictionary<Vector3Int, GameObject>();
     private float gridCellSize = 0.25f; // Changed from 1.0f to support platform thickness
 
+    public void SetGridCellSize(float scale)
+    {
+        gridCellSize = 0.25f * scale;
+    }
+
     public void RegisterBlock(GameObject block, Vector3 worldPosition)
     {
         Vector3Int gridPos = WorldToGrid(worldPosition);

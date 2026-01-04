@@ -17,6 +17,10 @@ public class DirectionalArrowSystem : MonoBehaviour
     public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f);
     public int thinAxisIndex = 1; // Y-axis is thin
 
+    [Tooltip("Scale multiplier for platforms (should match BuildModeController)")]
+    [Range(0.1f, 5.0f)]
+    public float platformScale = 1.0f;
+
     private GameObject currentBlock;
     private Camera playerCamera;
     private Vector3[] currentCardinalDirections = new Vector3[4];
@@ -156,11 +160,11 @@ public class DirectionalArrowSystem : MonoBehaviour
 
         if (parallelComponent > 0.9f) // Parallel to thin axis
         {
-            return platformLocalDimensions[thinAxisIndex] / 2f; // 0.125
+            return (platformLocalDimensions[thinAxisIndex] / 2f) * platformScale; // 0.125 * scale
         }
         else // Perpendicular
         {
-            return 0.5f; // Half of 1.0 dimension
+            return 0.5f * platformScale; // (Half of 1.0 dimension) * scale
         }
     }
 

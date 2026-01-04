@@ -47,6 +47,10 @@ public class GameManager : MonoBehaviour
     [Tooltip("Reference to the CameraManager")]
     public CameraManager cameraManager;
 
+    [Header("Materials")]
+    [Tooltip("Hologram material (should use FX/Hologram shader)")]
+    public Material hologramMaterial;
+
     [Header("Color Scheme")]
     [Tooltip("Default UI color (white)")]
     public Color defaultColor = Color.white;

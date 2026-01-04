@@ -1,5 +1,6 @@
 using UnityEngine;
 using SUPERCharacter;
+using DG.Tweening;
 
 public class BuildModeController : MonoBehaviour
 {
@@ -19,8 +20,9 @@ public class BuildModeController : MonoBehaviour
     public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f); // X, Y, Z
     public int thinAxisIndex = 1; // 0=X, 1=Y, 2=Z (Y-axis is thin)
 
-    [Header("Visual Settings")]
-    public Material hologramMaterial; // Hologram material to apply in build mode
+    [Tooltip("Scale multiplier for platforms and grid system (1.0 = normal size)")]
+    [Range(0.1f, 5.0f)]
+    public float platformScale = 1.0f;
 
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
@@ -58,6 +60,12 @@ public class BuildModeController : MonoBehaviour
         // Hide arrows on start
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
             GameManager.Instance.arrowSystem.HideArrows();
+
+        // Sync grid cell size with adjacency grid
+        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
+        {
+            GameManager.Instance.adjacencyGrid.SetGridCellSize(platformScale);
+        }
     }
 
     void Update()
@@ -120,28 +128,31 @@ public class BuildModeController : MonoBehaviour
             playerController.buildModeOverride = true;
             playerController.buildModeOrbitCenter = firstBlock.transform.position;
 
-            // Rotate player avatar to face the first block (instant snap)
-            Vector3 directionToBlock = firstBlock.transform.position - playerController.transform.position;
-            directionToBlock.y = 0; // Keep rotation on horizontal plane only
-
-            if (directionToBlock != Vector3.zero)
-            {
-                // Calculate target rotation and instantly apply to player avatar
-                Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
-                playerController.transform.rotation = targetRotation;
-            }
-
-            // Set increased orbit distance for better view
-            playerController.maxCameraDistInternal = playerController.buildModeOrbitDistance;
-            playerController.currentCameraZ = -playerController.buildModeOrbitDistance;
+            // Smoothly transition camera distance for better view
+            DOVirtual.Float(
+                savedCameraDistance,
+                playerController.buildModeOrbitDistance,
+                0.5f,
+                value =>
+                {
+                    if (playerController != null)
+                    {
+                        playerController.maxCameraDistInternal = value;
+                        playerController.currentCameraZ = -value;
+                    }
+                }
+            ).SetEase(Ease.OutCubic);
 
             // Force third-person perspective for build mode orbit
             playerController.ChangePerspective(SUPERCharacter.PerspectiveModes._3rdPerson);
         }
 
-        // Show arrows
+        // Sync platformScale to arrow system and show arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
+        {
+            GameManager.Instance.arrowSystem.platformScale = platformScale;
             GameManager.Instance.arrowSystem.ShowArrows(firstBlock, playerController.playerCamera);
+        }
 
         // Apply hologram materials to all placed blocks
         ApplyHologramMaterialsToAllBlocks();
@@ -197,11 +208,11 @@ public class BuildModeController : MonoBehaviour
 
         if (parallelComponent > 0.9f) // Parallel to thin axis (within ~25 degrees)
         {
-            return platformLocalDimensions[thinAxisIndex] / 2f; // Half of thin dimension (0.125)
+            return (platformLocalDimensions[thinAxisIndex] / 2f) * platformScale; // Half of thin dimension (0.125) * scale
         }
         else // Perpendicular to thin axis
         {
-            return 0.5f; // Half of the 1.0 wide dimension
+            return 0.5f * platformScale; // (Half of the 1.0 wide dimension) * scale
         }
     }
 
@@ -222,8 +233,8 @@ public class BuildModeController : MonoBehaviour
         // New platform's extent (half-depth from its center to hinge edge)
         float newExtent = 0.5f; // Half of 1.0 depth
 
-        // Total center-to-center distance
-        return currentExtent + newExtent; // = 1.0
+        // Total center-to-center distance, scaled
+        return (currentExtent + newExtent) * platformScale; // = 1.0 * scale
     }
 
     private void PlaceBlockInDirection(KeyCode key)
@@ -237,11 +248,12 @@ public class BuildModeController : MonoBehaviour
         float placementDistance = GetPlacementDistance(currentSelectedBlock, direction);
         Vector3 newPosition = currentSelectedBlock.transform.position + direction * placementDistance;
 
-        // Round to nearest 0.25 increment for consistent grid alignment
+        // Round to (0.25 * platformScale) increments for consistent grid alignment
+        float roundingFactor = 4f / platformScale; // Inverse of grid cell size
         newPosition = new Vector3(
-            Mathf.Round(newPosition.x * 4f) / 4f,
-            Mathf.Round(newPosition.y * 4f) / 4f,
-            Mathf.Round(newPosition.z * 4f) / 4f
+            Mathf.Round(newPosition.x * roundingFactor) / roundingFactor,
+            Mathf.Round(newPosition.y * roundingFactor) / roundingFactor,
+            Mathf.Round(newPosition.z * roundingFactor) / roundingFactor
         );
 
         // Check if position occupied
@@ -262,12 +274,16 @@ public class BuildModeController : MonoBehaviour
         // Platform's forward (Z) points toward placement direction, Y stays mostly up
         Quaternion blockRotation = Quaternion.LookRotation(direction, Vector3.up);
 
-        // Place new block with rotation
+        // Place new block with rotation and scale
         GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, blockRotation);
-        newBlock.transform.localScale = Vector3.one;
+
+        // Animate block placement (scale from zero to target scale)
+        Vector3 targetScale = Vector3.one * platformScale;
+        newBlock.transform.localScale = Vector3.zero;
+        newBlock.transform.DOScale(targetScale, 0.15f).SetEase(Ease.OutBack, 1.2f);
 
         // Apply hologram material immediately when instantiating in build mode
-        if (hologramMaterial != null && isInBuildMode)
+        if (GameManager.Instance != null && GameManager.Instance.hologramMaterial != null && isInBuildMode)
         {
             MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
             if (renderer != null)
@@ -275,7 +291,8 @@ public class BuildModeController : MonoBehaviour
                 Material[] hologramMaterials = new Material[renderer.materials.Length];
                 for (int i = 0; i < hologramMaterials.Length; i++)
                 {
-                    hologramMaterials[i] = hologramMaterial;
+                    hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
+                    hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
                 }
                 renderer.materials = hologramMaterials;
             }
@@ -309,9 +326,12 @@ public class BuildModeController : MonoBehaviour
             playerController.buildModeOrbitCenter = newBlock.transform.position;
         }
 
-        // Update arrows
+        // Sync platformScale to arrow system and update arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
+        {
+            GameManager.Instance.arrowSystem.platformScale = platformScale;
             GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
+        }
     }
 
     /// <summary>
@@ -319,7 +339,7 @@ public class BuildModeController : MonoBehaviour
     /// </summary>
     private void ApplyHologramMaterialsToAllBlocks()
     {
-        if (hologramMaterial == null || GameManager.Instance == null || GameManager.Instance.buildingSystem == null)
+        if (GameManager.Instance == null || GameManager.Instance.hologramMaterial == null || GameManager.Instance.buildingSystem == null)
             return;
 
         // Get all placed blocks from BuildingSystem
@@ -342,7 +362,7 @@ public class BuildModeController : MonoBehaviour
     /// </summary>
     private void ApplyHologramMaterialToBlock(GameObject block)
     {
-        if (hologramMaterial == null || block == null)
+        if (GameManager.Instance == null || GameManager.Instance.hologramMaterial == null || block == null)
             return;
 
         MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
@@ -354,11 +374,12 @@ public class BuildModeController : MonoBehaviour
                 originalMaterials[block] = renderer.materials;
             }
 
-            // Apply hologram material to all material slots
+            // Apply hologram material to all material slots with build mode color
             Material[] hologramMaterials = new Material[renderer.materials.Length];
             for (int i = 0; i < hologramMaterials.Length; i++)
             {
-                hologramMaterials[i] = hologramMaterial;
+                hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
+                hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
             }
             renderer.materials = hologramMaterials;
         }

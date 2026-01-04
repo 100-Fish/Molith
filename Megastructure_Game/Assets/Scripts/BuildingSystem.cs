@@ -27,8 +27,8 @@ public class BuildingSystem : MonoBehaviour
     [Tooltip("The cube prefab to place")]
     public GameObject cubePrefab;
 
-    [Tooltip("Material to use for previews (should use FX/Hologram shader)")]
-    public Material hologramMaterial;
+    [Tooltip("Optional: Destruction sphere prefab. If not assigned, will create a procedural sphere.")]
+    public GameObject destructionSpherePrefab;
 
     [Header("Placement Settings")]
     [Tooltip("Distance from camera to place blocks")]
@@ -44,15 +44,6 @@ public class BuildingSystem : MonoBehaviour
     [Tooltip("Radius of the destruction sphere")]
     public float destructionRadius = 2f;
 
-    [Header("Block Scaling Settings")]
-    [Tooltip("Minimum scale multiplier for blocks")]
-    public float minScale = 0.5f;
-
-    [Tooltip("Maximum scale multiplier for blocks")]
-    public float maxScale = 2f;
-
-    [Tooltip("Speed of scale oscillation")]
-    public float scaleOscillationSpeed = 2f;
 
     [Header("Animation Settings")]
     [Tooltip("Duration of preview spawn animation")]
@@ -77,9 +68,6 @@ public class BuildingSystem : MonoBehaviour
     private Material previewMaterialInstance;
     private Material destructionMaterialInstance;
 
-    private float currentScaleMultiplier = 1f;
-    private float scaleTime = 0f;
-
     private readonly Dictionary<GameObject, Material[]> originalMaterials = new();
     private readonly HashSet<GameObject> blocksInDestructionRadius = new();
 
@@ -103,16 +91,16 @@ public class BuildingSystem : MonoBehaviour
             Debug.LogError("BuildingSystem: CubePrefab is not assigned! Please assign it in the inspector.");
         }
 
-        if (hologramMaterial == null)
+        if (GameManager.Instance.hologramMaterial == null)
         {
-            Debug.LogWarning("BuildingSystem: HologramMaterial is missing. Creating a default hologram material.");
+            Debug.LogWarning("BuildingSystem: HologramMaterial is missing on GameManager. Creating a default hologram material.");
             CreateDefaultHologramMaterial();
         }
 
-        previewMaterialInstance = new Material(hologramMaterial);
+        previewMaterialInstance = new Material(GameManager.Instance.hologramMaterial);
         previewMaterialInstance.SetColor("_Color", GameManager.Instance.placementColor);
 
-        destructionMaterialInstance = new Material(hologramMaterial);
+        destructionMaterialInstance = new Material(GameManager.Instance.hologramMaterial);
         destructionMaterialInstance.SetColor("_Color", GameManager.Instance.destructionColor);
     }
 
@@ -143,7 +131,6 @@ public class BuildingSystem : MonoBehaviour
         if (Input.GetKeyDown(placeKey))
         {
             isPlacementMode = true;
-            currentScaleMultiplier = 1.0f; // Always use scale 1.0
             CreatePreviewBlock();
         }
 
@@ -185,8 +172,8 @@ public class BuildingSystem : MonoBehaviour
 
         if (Input.GetKeyUp(destroyKey) && isDestructionMode)
         {
+            // Don't reset materials - let blocks stay destruction color until destroyed
             DestroyBlocksInRadius();
-            ResetBlockMaterials();
             isDestructionMode = false;
         }
     }
@@ -215,29 +202,57 @@ public class BuildingSystem : MonoBehaviour
             renderer.materials = previewMaterials;
         }
 
-        currentPreview.transform.localScale = Vector3.one;
-        currentScaleMultiplier = 1f;
+        // Get platform scale from BuildModeController
+        float platformScale = 1.0f;
+        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        {
+            platformScale = GameManager.Instance.buildModeController.platformScale;
+        }
+
+        currentPreview.transform.localScale = Vector3.one * platformScale;
 
         UpdatePreviewPosition();
     }
 
     void CreateDestructionSpherePreview()
     {
-        destructionSpherePreview = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        // Use prefab if assigned, otherwise create procedural sphere
+        if (destructionSpherePrefab != null)
+        {
+            destructionSpherePreview = Instantiate(destructionSpherePrefab);
+        }
+        else
+        {
+            destructionSpherePreview = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        }
+
         destructionSpherePreview.transform.localScale = Vector3.one * destructionRadius * 2f;
 
+        // Disable collider (might be on parent or child)
         Collider sphereCollider = destructionSpherePreview.GetComponent<Collider>();
         if (sphereCollider != null)
         {
             Destroy(sphereCollider);
         }
-
-        MeshRenderer renderer = destructionSpherePreview.GetComponent<MeshRenderer>();
-        if (renderer != null && destructionMaterialInstance != null)
+        Collider childCollider = destructionSpherePreview.GetComponentInChildren<Collider>();
+        if (childCollider != null)
         {
-            renderer.material = destructionMaterialInstance;
+            Destroy(childCollider);
         }
 
+        // Apply destruction material
+        MeshRenderer renderer = destructionSpherePreview.GetComponentInChildren<MeshRenderer>();
+        if (renderer != null && destructionMaterialInstance != null)
+        {
+            Material[] destructionMaterials = new Material[renderer.materials.Length];
+            for (int i = 0; i < destructionMaterials.Length; i++)
+            {
+                destructionMaterials[i] = destructionMaterialInstance;
+            }
+            renderer.materials = destructionMaterials;
+        }
+
+        // Animate sphere appearance
         destructionSpherePreview.transform.localScale = Vector3.zero;
         destructionSpherePreview.transform.DOScale(Vector3.one * destructionRadius * 2f, previewSpawnDuration).SetEase(Ease.OutBack);
 
@@ -260,48 +275,51 @@ public class BuildingSystem : MonoBehaviour
         }
     }
 
-    void UpdatePreviewScale()
-    {
-        if (currentPreview != null)
-        {
-            currentPreview.transform.localScale = Vector3.one * currentScaleMultiplier;
-        }
-    }
 
     void UpdateDestructionPreview()
     {
         HashSet<GameObject> currentBlocksInRadius = new HashSet<GameObject>();
 
-        foreach (GameObject block in placedBlocks)
+        // Use the same OverlapSphere method as destruction to ensure consistency
+        Collider[] hitColliders = Physics.OverlapSphere(previewPosition, destructionRadius);
+
+        foreach (Collider col in hitColliders)
         {
-            if (block == null) continue;
-
-            float distance = Vector3.Distance(block.transform.position, previewPosition);
-            if (distance <= destructionRadius)
+            // If collider is on a child, get the parent block
+            Transform current = col.transform;
+            while (current != null)
             {
-                currentBlocksInRadius.Add(block);
-
-                if (!blocksInDestructionRadius.Contains(block))
+                if (placedBlocks.Contains(current.gameObject))
                 {
-                    MeshRenderer renderer = block.GetComponent<MeshRenderer>();
-                    if (renderer != null)
-                    {
-                        if (!originalMaterials.ContainsKey(block))
-                        {
-                            originalMaterials[block] = renderer.materials;
-                        }
+                    GameObject block = current.gameObject;
+                    currentBlocksInRadius.Add(block);
 
-                        Material[] destructionMaterials = new Material[renderer.materials.Length];
-                        for (int i = 0; i < destructionMaterials.Length; i++)
+                    // Apply destruction material if not already applied
+                    if (!blocksInDestructionRadius.Contains(block))
+                    {
+                        MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
+                        if (renderer != null)
                         {
-                            destructionMaterials[i] = destructionMaterialInstance;
+                            if (!originalMaterials.ContainsKey(block))
+                            {
+                                originalMaterials[block] = renderer.materials;
+                            }
+
+                            Material[] destructionMaterials = new Material[renderer.materials.Length];
+                            for (int i = 0; i < destructionMaterials.Length; i++)
+                            {
+                                destructionMaterials[i] = destructionMaterialInstance;
+                            }
+                            renderer.materials = destructionMaterials;
                         }
-                        renderer.materials = destructionMaterials;
                     }
+                    break;
                 }
+                current = current.parent;
             }
         }
 
+        // Restore materials for blocks that left the radius
         foreach (GameObject block in blocksInDestructionRadius)
         {
             if (block != null && !currentBlocksInRadius.Contains(block))
@@ -321,25 +339,13 @@ public class BuildingSystem : MonoBehaviour
     {
         if (originalMaterials.ContainsKey(block))
         {
-            MeshRenderer renderer = block.GetComponent<MeshRenderer>();
+            MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
             if (renderer != null)
             {
                 renderer.materials = originalMaterials[block];
             }
             originalMaterials.Remove(block);
         }
-    }
-
-    void ResetBlockMaterials()
-    {
-        foreach (GameObject block in blocksInDestructionRadius)
-        {
-            if (block != null)
-            {
-                RestoreBlockMaterial(block);
-            }
-        }
-        blocksInDestructionRadius.Clear();
     }
 
     void PlaceBlock()
@@ -356,11 +362,19 @@ public class BuildingSystem : MonoBehaviour
             return;
         }
 
-        // Round position to nearest 0.25 increment
+        // Get platform scale from BuildModeController
+        float platformScale = 1.0f;
+        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        {
+            platformScale = GameManager.Instance.buildModeController.platformScale;
+        }
+
+        // Round position to (0.25 * platformScale) increments
+        float roundingFactor = 4f / platformScale;
         Vector3 roundedPosition = new Vector3(
-            Mathf.Round(previewPosition.x * 4f) / 4f,
-            Mathf.Round(previewPosition.y * 4f) / 4f,
-            Mathf.Round(previewPosition.z * 4f) / 4f
+            Mathf.Round(previewPosition.x * roundingFactor) / roundingFactor,
+            Mathf.Round(previewPosition.y * roundingFactor) / roundingFactor,
+            Mathf.Round(previewPosition.z * roundingFactor) / roundingFactor
         );
 
         // Keep scale at 1.0 (constant size)
@@ -368,7 +382,7 @@ public class BuildingSystem : MonoBehaviour
 
         GameObject newBlock = Instantiate(cubePrefab, roundedPosition, Quaternion.identity);
 
-        newBlock.transform.localScale = Vector3.one * roundedScale;
+        newBlock.transform.localScale = Vector3.one * roundedScale * platformScale;
 
         Collider blockCollider = newBlock.GetComponentInChildren<Collider>();
         if (blockCollider != null)
@@ -493,17 +507,17 @@ public class BuildingSystem : MonoBehaviour
         Shader hologramShader = Shader.Find("FX/Hologram");
         if (hologramShader != null)
         {
-            hologramMaterial = new Material(hologramShader);
-            hologramMaterial.SetFloat("_GlowIntensity", 0.3f);
-            hologramMaterial.SetFloat("_ScrollSpeedV", 0.5f);
-            hologramMaterial.SetFloat("_Scale", 5f);
-            hologramMaterial.SetTexture("_AlphaTexture", CreateStripedTexture());
+            GameManager.Instance.hologramMaterial = new Material(hologramShader);
+            GameManager.Instance.hologramMaterial.SetFloat("_GlowIntensity", 0.3f);
+            GameManager.Instance.hologramMaterial.SetFloat("_ScrollSpeedV", 0.5f);
+            GameManager.Instance.hologramMaterial.SetFloat("_Scale", 5f);
+            GameManager.Instance.hologramMaterial.SetTexture("_AlphaTexture", CreateStripedTexture());
         }
         else
         {
-            hologramMaterial = new Material(Shader.Find("Standard"));
-            hologramMaterial.color = new Color(0.5f, 0.5f, 1f, 0.5f);
-            SetupTransparentMaterial(hologramMaterial);
+            GameManager.Instance.hologramMaterial = new Material(Shader.Find("Standard"));
+            GameManager.Instance.hologramMaterial.color = new Color(0.5f, 0.5f, 1f, 0.5f);
+            SetupTransparentMaterial(GameManager.Instance.hologramMaterial);
         }
     }
 

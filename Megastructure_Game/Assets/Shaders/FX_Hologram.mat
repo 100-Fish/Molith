@@ -33,13 +33,15 @@ Material:
         m_Offset: {x: 0, y: 0}
     m_Ints: []
     m_Floats:
-    - _FrostAmount: 0
+    - _FrostAmount: 0.392
     - _GlitchIntensity: 0.02
     - _GlitchSpeed: 2
     - _GlowIntensity: 0.653
-    - _Opacity: 0.302
+    - _Opacity: 0.642
+    - _OutlineOpacity: 0.9
+    - _OutlineWidth: 0.03
     - _Scale: 0.5
     - _ScrollSpeedV: 0.1
     m_Colors:
-    - _Color: {r: 0, g: 1, b: 1, a: 1}
+    - _Color: {r: 0.64705884, g: 0, b: 1, a: 1}
   m_BuildTextureStacks: []

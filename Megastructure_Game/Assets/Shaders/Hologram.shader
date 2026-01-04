@@ -47,9 +47,18 @@ Shader "FX/Hologram"
 
                 v2f vertOutline(appdata v) {
                     v2f o;
-                    // Expand vertices along their normals
+                    // Calculate world-space scale to maintain constant outline thickness
+                    float3 worldScale = float3(
+                        length(unity_ObjectToWorld[0].xyz),
+                        length(unity_ObjectToWorld[1].xyz),
+                        length(unity_ObjectToWorld[2].xyz)
+                    );
+                    // Use average scale to maintain uniform outline
+                    float avgScale = (worldScale.x + worldScale.y + worldScale.z) / 3.0;
+
+                    // Expand vertices along their normals with scale compensation
                     float3 norm = normalize(v.normal);
-                    float3 expanded = v.vertex.xyz + norm * _OutlineWidth;
+                    float3 expanded = v.vertex.xyz + norm * (_OutlineWidth / avgScale);
                     o.position = UnityObjectToClipPos(float4(expanded, 1.0));
                     return o;
                 }
