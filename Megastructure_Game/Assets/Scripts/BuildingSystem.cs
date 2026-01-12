@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using DG.Tweening;
 
 [Serializable]
 public class BlockData
@@ -24,59 +23,57 @@ public class BlockData
 public class BuildingSystem : MonoBehaviour
 {
     [Header("References")]
-    [Tooltip("The cube prefab to place")]
-    public GameObject cubePrefab;
+    [Tooltip("Default material for roads")]
+    public Material defaultRoadMaterial;
 
-    [Tooltip("Optional: Destruction sphere prefab. If not assigned, will create a procedural sphere.")]
-    public GameObject destructionSpherePrefab;
+    [Header("Road Dimensions")]
+    [Tooltip("Width of roads")]
+    [Range(0.1f, 5.0f)]
+    public float roadWidth = 1.0f;
+
+    [Tooltip("Depth (thickness) of roads")]
+    [Range(0.1f, 2.0f)]
+    public float roadDepth = 0.25f;
 
     [Header("Placement Settings")]
-    [Tooltip("Distance from camera to place blocks")]
+    [Tooltip("Distance from camera to place first point")]
     public float placementDistance = 5f;
 
-    [Tooltip("Key to hold for placing blocks")]
+    [Tooltip("Key to start new road")]
     public KeyCode placeKey = KeyCode.E;
 
     [Header("Destruction Settings")]
-    [Tooltip("Key to hold for destroying blocks")]
+    [Tooltip("Key to remove oldest point")]
     public KeyCode destroyKey = KeyCode.Q;
 
-    [Tooltip("Radius of the destruction sphere")]
-    public float destructionRadius = 2f;
-
-
-    [Header("Animation Settings")]
-    [Tooltip("Duration of preview spawn animation")]
-    public float previewSpawnDuration = 0.2f;
-
-    [Tooltip("Duration of block placement animation")]
-    public float placementDuration = 0.15f;
-
-    [Tooltip("Duration of block destruction animation")]
-    public float destructionDuration = 0.2f;
-
-    [Header("Block Limit Settings")]
-    [Tooltip("Maximum number of blocks that can be placed at once")]
+    [Header("Point Limit Settings")]
+    [Tooltip("Maximum number of points that can be placed at once")]
     public int maxBlocks = 50;
 
-    private GameObject currentPreview;
-    private GameObject destructionSpherePreview;
+    [Header("Road System")]
+    private readonly List<Road> roads = new List<Road>();
+    private Road currentRoad = null;
+    private RoadMeshGenerator roadMeshGenerator;
+    private int nextRoadID = 0;
+
+    private GameObject previewRoad = null;
     private bool isPlacementMode = false;
-    private bool isDestructionMode = false;
     private Vector3 previewPosition;
-    private readonly HashSet<GameObject> placedBlocks = new();
-    private Material previewMaterialInstance;
-    private Material destructionMaterialInstance;
 
-    private readonly Dictionary<GameObject, Material[]> originalMaterials = new();
-    private readonly HashSet<GameObject> blocksInDestructionRadius = new();
+    public int CurrentBlockCount
+    {
+        get
+        {
+            int count = 0;
+            foreach (Road road in roads)
+                count += road.splinePoints.Count;
+            if (currentRoad != null)
+                count += currentRoad.splinePoints.Count;
+            return count;
+        }
+    }
 
-    private readonly List<BlockData> blockHistory = new();
-    private readonly Dictionary<GameObject, BlockData> blockToData = new();
-
-    public int CurrentBlockCount => placedBlocks.Count;
     public int RemainingBlocks => maxBlocks - CurrentBlockCount;
-    public List<BlockData> BlockHistory => new List<BlockData>(blockHistory);
 
     void Start()
     {
@@ -86,22 +83,12 @@ public class BuildingSystem : MonoBehaviour
             return;
         }
 
-        if (cubePrefab == null)
-        {
-            Debug.LogError("BuildingSystem: CubePrefab is not assigned! Please assign it in the inspector.");
-        }
-
-        if (GameManager.Instance.hologramMaterial == null)
-        {
-            Debug.LogWarning("BuildingSystem: HologramMaterial is missing on GameManager. Creating a default hologram material.");
-            CreateDefaultHologramMaterial();
-        }
-
-        previewMaterialInstance = new Material(GameManager.Instance.hologramMaterial);
-        previewMaterialInstance.SetColor("_Color", GameManager.Instance.placementColor);
-
-        destructionMaterialInstance = new Material(GameManager.Instance.hologramMaterial);
-        destructionMaterialInstance.SetColor("_Color", GameManager.Instance.destructionColor);
+        // Initialize road mesh generator
+        roadMeshGenerator = gameObject.AddComponent<RoadMeshGenerator>();
+        roadMeshGenerator.roadWidth = roadWidth;
+        roadMeshGenerator.roadDepth = roadDepth;
+        roadMeshGenerator.segmentsPerUnit = 4;
+        roadMeshGenerator.defaultRoadMaterial = defaultRoadMaterial;
     }
 
     void Update()
@@ -118,20 +105,25 @@ public class BuildingSystem : MonoBehaviour
 
     void HandlePlacementInput()
     {
-        // Don't allow placement if in build mode or destruction mode
+        // Check if already in build mode - if so, E exits instead
         if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
         {
             if (GameManager.Instance.buildModeController.IsInBuildMode)
+            {
+                // E key exits build mode
+                if (Input.GetKeyDown(placeKey))
+                {
+                    GameManager.Instance.buildModeController.ExitBuildMode();
+                }
                 return;
+            }
         }
 
-        if (isDestructionMode)
-            return;
-
+        // E key held - show preview
         if (Input.GetKeyDown(placeKey))
         {
             isPlacementMode = true;
-            CreatePreviewBlock();
+            CreatePreviewRoad();
         }
 
         if (Input.GetKey(placeKey) && isPlacementMode)
@@ -139,480 +131,245 @@ public class BuildingSystem : MonoBehaviour
             UpdatePreviewPosition();
         }
 
+        // E key released - place road and enter build mode
         if (Input.GetKeyUp(placeKey) && isPlacementMode)
         {
-            PlaceBlock();
+            PlaceFirstPoint();
             isPlacementMode = false;
         }
     }
 
-    void HandleDestructionInput()
+    void CreatePreviewRoad()
     {
-        // Don't allow destruction if in build mode or placement mode
-        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        if (previewRoad == null)
         {
-            if (GameManager.Instance.buildModeController.IsInBuildMode)
-                return;
-        }
+            previewRoad = new GameObject("RoadPreview");
+            previewRoad.AddComponent<MeshFilter>();
+            MeshRenderer renderer = previewRoad.AddComponent<MeshRenderer>();
 
-        if (isPlacementMode)
-            return;
-
-        if (Input.GetKeyDown(destroyKey))
-        {
-            isDestructionMode = true;
-            CreateDestructionSpherePreview();
-        }
-
-        if (Input.GetKey(destroyKey) && isDestructionMode)
-        {
-            UpdatePreviewPosition();
-            UpdateDestructionPreview();
-        }
-
-        if (Input.GetKeyUp(destroyKey) && isDestructionMode)
-        {
-            // Don't reset materials - let blocks stay destruction color until destroyed
-            DestroyBlocksInRadius();
-            isDestructionMode = false;
-        }
-    }
-
-    void CreatePreviewBlock()
-    {
-        if (cubePrefab == null)
-            return;
-
-        currentPreview = Instantiate(cubePrefab);
-
-        Collider previewCollider = currentPreview.GetComponentInChildren<Collider>();
-        if (previewCollider != null)
-        {
-            previewCollider.enabled = false;
-        }
-
-        MeshRenderer renderer = currentPreview.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null && previewMaterialInstance != null)
-        {
-            Material[] previewMaterials = new Material[renderer.materials.Length];
-            for (int i = 0; i < previewMaterials.Length; i++)
+            // Use hologram material with placement color
+            if (GameManager.Instance != null && GameManager.Instance.hologramMaterial != null)
             {
-                previewMaterials[i] = previewMaterialInstance;
+                Material previewMat = new Material(GameManager.Instance.hologramMaterial);
+                previewMat.SetColor("_Color", GameManager.Instance.placementColor);
+                renderer.material = previewMat;
             }
-            renderer.materials = previewMaterials;
         }
-
-        // Get platform scale from BuildModeController
-        float platformScale = 1.0f;
-        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
-        {
-            platformScale = GameManager.Instance.buildModeController.platformScale;
-        }
-
-        currentPreview.transform.localScale = Vector3.one * platformScale;
-
-        UpdatePreviewPosition();
-    }
-
-    void CreateDestructionSpherePreview()
-    {
-        // Use prefab if assigned, otherwise create procedural sphere
-        if (destructionSpherePrefab != null)
-        {
-            destructionSpherePreview = Instantiate(destructionSpherePrefab);
-        }
-        else
-        {
-            destructionSpherePreview = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-        }
-
-        destructionSpherePreview.transform.localScale = Vector3.one * destructionRadius * 2f;
-
-        // Disable collider (might be on parent or child)
-        Collider sphereCollider = destructionSpherePreview.GetComponent<Collider>();
-        if (sphereCollider != null)
-        {
-            Destroy(sphereCollider);
-        }
-        Collider childCollider = destructionSpherePreview.GetComponentInChildren<Collider>();
-        if (childCollider != null)
-        {
-            Destroy(childCollider);
-        }
-
-        // Apply destruction material
-        MeshRenderer renderer = destructionSpherePreview.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null && destructionMaterialInstance != null)
-        {
-            Material[] destructionMaterials = new Material[renderer.materials.Length];
-            for (int i = 0; i < destructionMaterials.Length; i++)
-            {
-                destructionMaterials[i] = destructionMaterialInstance;
-            }
-            renderer.materials = destructionMaterials;
-        }
-
-        // Animate sphere appearance
-        destructionSpherePreview.transform.localScale = Vector3.zero;
-        destructionSpherePreview.transform.DOScale(Vector3.one * destructionRadius * 2f, previewSpawnDuration).SetEase(Ease.OutBack);
 
         UpdatePreviewPosition();
     }
 
     void UpdatePreviewPosition()
     {
+        if (previewRoad == null) return;
+        if (GameManager.Instance == null || GameManager.Instance.playerController == null) return;
+
         Camera cam = GameManager.Instance.playerController.playerCamera;
-        previewPosition = cam.transform.position + cam.transform.forward * placementDistance;
+        if (cam == null) return;
 
-        if (isPlacementMode && currentPreview != null)
-        {
-            currentPreview.transform.position = previewPosition;
-        }
+        // Calculate position from camera
+        Vector3 rawPosition = cam.transform.position + cam.transform.forward * placementDistance;
 
-        if (isDestructionMode && destructionSpherePreview != null)
-        {
-            destructionSpherePreview.transform.position = previewPosition;
-        }
-    }
-
-
-    void UpdateDestructionPreview()
-    {
-        HashSet<GameObject> currentBlocksInRadius = new HashSet<GameObject>();
-
-        // Use the same OverlapSphere method as destruction to ensure consistency
-        Collider[] hitColliders = Physics.OverlapSphere(previewPosition, destructionRadius);
-
-        foreach (Collider col in hitColliders)
-        {
-            // If collider is on a child, get the parent block
-            Transform current = col.transform;
-            while (current != null)
-            {
-                if (placedBlocks.Contains(current.gameObject))
-                {
-                    GameObject block = current.gameObject;
-                    currentBlocksInRadius.Add(block);
-
-                    // Apply destruction material if not already applied
-                    if (!blocksInDestructionRadius.Contains(block))
-                    {
-                        MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-                        if (renderer != null)
-                        {
-                            if (!originalMaterials.ContainsKey(block))
-                            {
-                                originalMaterials[block] = renderer.materials;
-                            }
-
-                            Material[] destructionMaterials = new Material[renderer.materials.Length];
-                            for (int i = 0; i < destructionMaterials.Length; i++)
-                            {
-                                destructionMaterials[i] = destructionMaterialInstance;
-                            }
-                            renderer.materials = destructionMaterials;
-                        }
-                    }
-                    break;
-                }
-                current = current.parent;
-            }
-        }
-
-        // Restore materials for blocks that left the radius
-        foreach (GameObject block in blocksInDestructionRadius)
-        {
-            if (block != null && !currentBlocksInRadius.Contains(block))
-            {
-                RestoreBlockMaterial(block);
-            }
-        }
-
-        blocksInDestructionRadius.Clear();
-        foreach (GameObject block in currentBlocksInRadius)
-        {
-            blocksInDestructionRadius.Add(block);
-        }
-    }
-
-    void RestoreBlockMaterial(GameObject block)
-    {
-        if (originalMaterials.ContainsKey(block))
-        {
-            MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-            if (renderer != null)
-            {
-                renderer.materials = originalMaterials[block];
-            }
-            originalMaterials.Remove(block);
-        }
-    }
-
-    void PlaceBlock()
-    {
-        if (currentPreview == null || cubePrefab == null)
-            return;
-
-        // Check if we've reached the block limit
-        if (CurrentBlockCount >= maxBlocks)
-        {
-            Debug.Log($"Cannot place block: Maximum block limit ({maxBlocks}) reached!");
-            Destroy(currentPreview);
-            currentPreview = null;
-            return;
-        }
-
-        // Get platform scale from BuildModeController
+        // Get platform scale for grid snapping
         float platformScale = 1.0f;
-        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        if (GameManager.Instance.buildModeController != null)
         {
             platformScale = GameManager.Instance.buildModeController.platformScale;
         }
 
-        // Round position to (0.25 * platformScale) increments
+        // Round to grid (same calculation as actual placement)
         float roundingFactor = 4f / platformScale;
-        Vector3 roundedPosition = new Vector3(
-            Mathf.Round(previewPosition.x * roundingFactor) / roundingFactor,
-            Mathf.Round(previewPosition.y * roundingFactor) / roundingFactor,
-            Mathf.Round(previewPosition.z * roundingFactor) / roundingFactor
+        previewPosition = new Vector3(
+            Mathf.Round(rawPosition.x * roundingFactor) / roundingFactor,
+            Mathf.Round(rawPosition.y * roundingFactor) / roundingFactor,
+            Mathf.Round(rawPosition.z * roundingFactor) / roundingFactor
         );
 
-        // Keep scale at 1.0 (constant size)
-        float roundedScale = 1.0f;
+        previewRoad.transform.position = previewPosition;
 
-        GameObject newBlock = Instantiate(cubePrefab, roundedPosition, Quaternion.identity);
+        // Generate preview mesh (single point)
+        Mesh previewMesh = roadMeshGenerator.GenerateRoadMesh(new System.Collections.Generic.List<Vector3> { previewPosition });
+        previewRoad.GetComponent<MeshFilter>().mesh = previewMesh;
+    }
 
-        newBlock.transform.localScale = Vector3.one * roundedScale * platformScale;
-
-        Collider blockCollider = newBlock.GetComponentInChildren<Collider>();
-        if (blockCollider != null)
+    void PlaceFirstPoint()
+    {
+        if (previewRoad != null)
         {
-            blockCollider.enabled = true;
+            Destroy(previewRoad);
+            previewRoad = null;
         }
 
-        MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null)
+        StartNewRoad(previewPosition);
+
+        // Enter build mode
+        if (GameManager.Instance.buildModeController != null)
         {
-            MeshRenderer prefabRenderer = cubePrefab.GetComponentInChildren<MeshRenderer>();
-            if (prefabRenderer != null)
-            {
-                renderer.materials = prefabRenderer.sharedMaterials;
-            }
+            GameManager.Instance.buildModeController.EnterBuildMode(previewPosition);
         }
+    }
 
-        placedBlocks.Add(newBlock);
+    private float lastDestructionTime = 0f;
+    private float destructionDelay = 0.15f;
 
-        // Create and track block data
-        BlockData blockData = new BlockData(roundedPosition, roundedScale);
-        blockHistory.Add(blockData);
-        blockToData[newBlock] = blockData;
-
-        Vector3 targetScale = newBlock.transform.localScale;
-        newBlock.transform.localScale = Vector3.zero;
-
-        newBlock.transform.DOScale(targetScale, placementDuration).SetEase(Ease.OutBack, 1.2f);
-
-        Destroy(currentPreview);
-        currentPreview = null;
-
-        // Register with adjacency grid
-        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
-        {
-            GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, roundedPosition);
-        }
-
-        // Trigger build mode after placing first block
+    void HandleDestructionInput()
+    {
+        // Don't allow destruction in build mode
         if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
         {
-            GameManager.Instance.buildModeController.EnterBuildMode(newBlock);
+            if (GameManager.Instance.buildModeController.IsInBuildMode)
+                return;
+        }
+
+        // Q key removes oldest point - continuous when held
+        if (Input.GetKey(destroyKey))
+        {
+            // First removal is instant
+            if (Input.GetKeyDown(destroyKey))
+            {
+                RemoveOldestPoint();
+                lastDestructionTime = Time.time;
+            }
+            // Subsequent removals have a delay
+            else if (Time.time - lastDestructionTime >= destructionDelay)
+            {
+                RemoveOldestPoint();
+                lastDestructionTime = Time.time;
+            }
         }
     }
 
-    void DestroyBlocksInRadius()
+    void RemoveOldestPoint()
     {
-        HashSet<GameObject> blocksToDestroy = new HashSet<GameObject>();
-
-        // Use OverlapSphere to find all colliders in the destruction radius
-        Collider[] hitColliders = Physics.OverlapSphere(previewPosition, destructionRadius);
-
-        foreach (Collider col in hitColliders)
+        // Find oldest road with points
+        Road oldestRoad = null;
+        foreach (Road road in roads)
         {
-            // Check if the collider's GameObject or its parent is a placed block
-            GameObject block = col.gameObject;
-
-            // If collider is on a child, get the parent block
-            Transform current = col.transform;
-            while (current != null)
+            if (road.splinePoints.Count > 0)
             {
-                if (placedBlocks.Contains(current.gameObject))
-                {
-                    blocksToDestroy.Add(current.gameObject);
-                    break;
-                }
-                current = current.parent;
+                oldestRoad = road;
+                break;
             }
         }
 
-        foreach (GameObject block in blocksToDestroy)
+        if (oldestRoad == null)
         {
-            placedBlocks.Remove(block);
-
-            // Unregister from adjacency grid
-            if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
-            {
-                GameManager.Instance.adjacencyGrid.UnregisterBlock(block.transform.position);
-            }
-
-            // Remove from block history
-            if (blockToData.ContainsKey(block))
-            {
-                BlockData data = blockToData[block];
-                blockHistory.Remove(data);
-                blockToData.Remove(block);
-            }
-
-            if (originalMaterials.ContainsKey(block))
-            {
-                originalMaterials.Remove(block);
-            }
-            blocksInDestructionRadius.Remove(block);
-
-            GameObject blockToDestroy = block;
-
-            block.transform.DOKill();
-
-            block.transform.DOScale(Vector3.zero, destructionDuration).SetEase(Ease.InBack).OnComplete(() =>
-            {
-                if (blockToDestroy != null)
-                    Destroy(blockToDestroy);
-            });
+            Debug.Log("No points to remove");
+            return;
         }
 
-        if (destructionSpherePreview != null)
+        // Remove oldest point
+        oldestRoad.RemoveOldestPoint();
+
+        // Destroy road if it has less than 2 points remaining
+        if (oldestRoad.splinePoints.Count < 2)
         {
-            GameObject sphereToDestroy = destructionSpherePreview;
-
-            destructionSpherePreview.transform.DOScale(Vector3.zero, destructionDuration * 0.5f).SetEase(Ease.InBack).OnComplete(() =>
-            {
-                if (sphereToDestroy != null)
-                    Destroy(sphereToDestroy);
-            });
-
-            destructionSpherePreview = null;
-        }
-    }
-
-    void CreateDefaultHologramMaterial()
-    {
-        Shader hologramShader = Shader.Find("FX/Hologram");
-        if (hologramShader != null)
-        {
-            GameManager.Instance.hologramMaterial = new Material(hologramShader);
-            GameManager.Instance.hologramMaterial.SetFloat("_GlowIntensity", 0.3f);
-            GameManager.Instance.hologramMaterial.SetFloat("_ScrollSpeedV", 0.5f);
-            GameManager.Instance.hologramMaterial.SetFloat("_Scale", 5f);
-            GameManager.Instance.hologramMaterial.SetTexture("_AlphaTexture", CreateStripedTexture());
+            DestroyRoad(oldestRoad);
+            roads.Remove(oldestRoad);
         }
         else
         {
-            GameManager.Instance.hologramMaterial = new Material(Shader.Find("Standard"));
-            GameManager.Instance.hologramMaterial.color = new Color(0.5f, 0.5f, 1f, 0.5f);
-            SetupTransparentMaterial(GameManager.Instance.hologramMaterial);
-        }
-    }
-
-    void SetupTransparentMaterial(Material mat)
-    {
-        mat.SetFloat("_Mode", 3);
-        mat.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-        mat.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-        mat.SetInt("_ZWrite", 0);
-        mat.DisableKeyword("_ALPHATEST_ON");
-        mat.EnableKeyword("_ALPHABLEND_ON");
-        mat.DisableKeyword("_ALPHAPREMULTIPLY_ON");
-        mat.renderQueue = 3000;
-    }
-
-    Texture2D CreateStripedTexture()
-    {
-        int width = 64;
-        int height = 64;
-        Texture2D texture = new Texture2D(width, height, TextureFormat.RGBA32, false);
-
-        Color[] pixels = new Color[width * height];
-        for (int y = 0; y < height; y++)
-        {
-            for (int x = 0; x < width; x++)
+            // Regenerate mesh with remaining points
+            oldestRoad.roadMesh = roadMeshGenerator.GenerateRoadMesh(oldestRoad.splinePoints);
+            if (oldestRoad.roadMeshObject != null)
             {
-                float alpha = (y % 8 < 4) ? 1f : 0.3f;
-                pixels[y * width + x] = new Color(1, 1, 1, alpha);
+                oldestRoad.roadMeshObject.GetComponent<MeshFilter>().mesh = oldestRoad.roadMesh;
             }
         }
-
-        texture.SetPixels(pixels);
-        texture.Apply();
-        texture.filterMode = FilterMode.Point;
-        texture.wrapMode = TextureWrapMode.Repeat;
-
-        return texture;
     }
 
-    public void RemoveBlock(GameObject block)
+    void DestroyRoad(Road road)
     {
-        placedBlocks.Remove(block);
-
-        // Unregister from adjacency grid
-        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
-        {
-            GameManager.Instance.adjacencyGrid.UnregisterBlock(block.transform.position);
-        }
-
-        // Remove from block history
-        if (blockToData.ContainsKey(block))
-        {
-            BlockData data = blockToData[block];
-            blockHistory.Remove(data);
-            blockToData.Remove(block);
-        }
-
-        if (originalMaterials.ContainsKey(block))
-        {
-            originalMaterials.Remove(block);
-        }
-
-        blocksInDestructionRadius.Remove(block);
+        if (road.roadMeshObject != null)
+            Destroy(road.roadMeshObject);
     }
 
-    public void AddBlock(GameObject block)
+    public void StartNewRoad(Vector3 firstPoint)
     {
-        placedBlocks.Add(block);
+        currentRoad = new Road(nextRoadID++);
+        currentRoad.AddPoint(firstPoint);
+        roads.Add(currentRoad);
 
-        // Add block data for merged blocks
-        Vector3 roundedPosition = new Vector3(
-            Mathf.Round(block.transform.position.x),
-            Mathf.Round(block.transform.position.y),
-            Mathf.Round(block.transform.position.z)
-        );
-        float roundedScale = 1.0f;
-
-        // Register with adjacency grid
-        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
-        {
-            GameManager.Instance.adjacencyGrid.RegisterBlock(block, roundedPosition);
-        }
-
-        // For merged blocks, track position and scale
-        BlockData blockData = new BlockData(roundedPosition, roundedScale);
-        blockHistory.Add(blockData);
-        blockToData[block] = blockData;
+        Debug.Log($"Started new road {currentRoad.roadID} at {firstPoint}");
     }
 
-    void OnDestroy()
+    public void AddPointToCurrentRoad(Vector3 point)
     {
-        if (previewMaterialInstance != null)
-            Destroy(previewMaterialInstance);
+        if (currentRoad == null)
+        {
+            Debug.LogError("No current road! Call StartNewRoad first.");
+            return;
+        }
 
-        if (destructionMaterialInstance != null)
-            Destroy(destructionMaterialInstance);
+        currentRoad.AddPoint(point);
+        RegenerateCurrentRoadMesh();
+    }
+
+    public void FinalizeCurrentRoad()
+    {
+        if (currentRoad == null) return;
+
+        // Discard roads with less than 2 points
+        if (currentRoad.splinePoints.Count < 2)
+        {
+            Debug.Log($"Road {currentRoad.roadID} has only {currentRoad.splinePoints.Count} point(s) - discarding");
+            roads.Remove(currentRoad);
+            if (currentRoad.roadMeshObject != null)
+                Destroy(currentRoad.roadMeshObject);
+        }
+        else
+        {
+            Debug.Log($"Finalized road {currentRoad.roadID} with {currentRoad.splinePoints.Count} points");
+        }
+
+        currentRoad = null;
+    }
+
+    private void RegenerateCurrentRoadMesh()
+    {
+        if (currentRoad == null) return;
+
+        // Generate mesh
+        Mesh newMesh = roadMeshGenerator.GenerateRoadMesh(currentRoad.splinePoints);
+        currentRoad.roadMesh = newMesh;
+
+        // Create or update GameObject
+        if (currentRoad.roadMeshObject == null)
+        {
+            currentRoad.roadMeshObject = new GameObject($"Road_{currentRoad.roadID}");
+            currentRoad.roadMeshObject.AddComponent<MeshFilter>();
+            MeshRenderer renderer = currentRoad.roadMeshObject.AddComponent<MeshRenderer>();
+
+            // Use hologram material with build mode color
+            if (GameManager.Instance != null && GameManager.Instance.hologramMaterial != null)
+            {
+                Material roadMat = new Material(GameManager.Instance.hologramMaterial);
+                roadMat.SetColor("_Color", GameManager.Instance.buildModeColor);
+                renderer.material = roadMat;
+            }
+            else
+            {
+                renderer.material = defaultRoadMaterial != null ? defaultRoadMaterial : new Material(Shader.Find("Standard"));
+            }
+
+            // Add MeshCollider for walkability
+            MeshCollider collider = currentRoad.roadMeshObject.AddComponent<MeshCollider>();
+            collider.sharedMesh = newMesh;
+        }
+
+        // Update mesh
+        currentRoad.roadMeshObject.GetComponent<MeshFilter>().mesh = newMesh;
+
+        // Update collider mesh
+        MeshCollider meshCollider = currentRoad.roadMeshObject.GetComponent<MeshCollider>();
+        if (meshCollider != null)
+        {
+            meshCollider.sharedMesh = newMesh;
+        }
+    }
+
+    public Road GetCurrentRoad()
+    {
+        return currentRoad;
     }
 }

@@ -13,15 +13,11 @@ public class DirectionalArrowSystem : MonoBehaviour
     public float snapDuration = 0.3f; // DOTween duration for smooth snapping
     public string[] wasdLabels = new string[] { "W", "A", "S", "D" };
 
-    [Header("Platform Configuration")]
-    public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f);
-    public int thinAxisIndex = 1; // Y-axis is thin
-
     [Tooltip("Scale multiplier for platforms (should match BuildModeController)")]
     [Range(0.1f, 5.0f)]
     public float platformScale = 1.0f;
 
-    private GameObject currentBlock;
+    private Vector3 currentPosition;
     private Camera playerCamera;
     private Vector3[] currentCardinalDirections = new Vector3[4];
 
@@ -88,9 +84,9 @@ public class DirectionalArrowSystem : MonoBehaviour
         return textMesh;
     }
 
-    public void ShowArrows(GameObject block, Camera cam)
+    public void ShowArrowsAtPosition(Vector3 position, Camera cam)
     {
-        currentBlock = block;
+        currentPosition = position;
         playerCamera = cam;
 
         for (int i = 0; i < 4; i++)
@@ -104,8 +100,8 @@ public class DirectionalArrowSystem : MonoBehaviour
 
     public void HideArrows()
     {
-        // Clear current block reference to stop Update loop
-        currentBlock = null;
+        // Clear current position reference to stop Update loop
+        currentPosition = Vector3.zero;
         playerCamera = null;
 
         // Kill all active tweens
@@ -125,54 +121,26 @@ public class DirectionalArrowSystem : MonoBehaviour
         }
     }
 
-    public void UpdateArrowPositions(GameObject block, Camera cam)
+    public void UpdateArrowPositions(Vector3 position, Camera cam)
     {
-        currentBlock = block;
+        currentPosition = position;
         playerCamera = cam;
         UpdateArrowPositions();
     }
 
     void Update()
     {
-        if (currentBlock != null && playerCamera != null)
+        if (currentPosition != Vector3.zero && playerCamera != null)
         {
             UpdateArrowPositions();
         }
     }
 
-    /// <summary>
-    /// Gets the world-space direction of the platform's thin axis
-    /// </summary>
-    private Vector3 GetPlatformThinAxis(GameObject platform)
-    {
-        Vector3 localThinAxis = Vector3.zero;
-        localThinAxis[thinAxisIndex] = 1f;
-        return platform.transform.rotation * localThinAxis;
-    }
-
-    /// <summary>
-    /// Gets the half-extent of a platform in a given direction
-    /// </summary>
-    private float GetPlatformExtentInDirection(GameObject platform, Vector3 direction)
-    {
-        Vector3 thinAxis = GetPlatformThinAxis(platform);
-        float parallelComponent = Mathf.Abs(Vector3.Dot(direction.normalized, thinAxis.normalized));
-
-        if (parallelComponent > 0.9f) // Parallel to thin axis
-        {
-            return (platformLocalDimensions[thinAxisIndex] / 2f) * platformScale; // 0.125 * scale
-        }
-        else // Perpendicular
-        {
-            return 0.5f * platformScale; // (Half of 1.0 dimension) * scale
-        }
-    }
-
     private void UpdateArrowPositions()
     {
-        if (currentBlock == null || playerCamera == null) return;
+        if (currentPosition == Vector3.zero || playerCamera == null) return;
 
-        Vector3 blockCenter = currentBlock.transform.position;
+        Vector3 blockCenter = currentPosition;
 
         // Determine camera orientation
         Vector3 camForward = playerCamera.transform.forward;
@@ -207,8 +175,8 @@ public class DirectionalArrowSystem : MonoBehaviour
         // Calculate target world positions based on cardinal directions
         for (int i = 0; i < 4; i++)
         {
-            float platformExtent = GetPlatformExtentInDirection(currentBlock, newCardinalDirections[i]);
-            Vector3 newTargetWorldPos = blockCenter + newCardinalDirections[i] * (platformExtent + arrowOffset);
+            float fixedOffset = 0.5f * platformScale;
+            Vector3 newTargetWorldPos = blockCenter + newCardinalDirections[i] * (fixedOffset + arrowOffset);
 
             // Check if cardinal direction changed - if so, use DOTween
             if (currentCardinalDirections[i] != newCardinalDirections[i])
@@ -263,7 +231,7 @@ public class DirectionalArrowSystem : MonoBehaviour
 
     public Vector3 GetPlacementDirection(KeyCode key)
     {
-        if (currentBlock == null || playerCamera == null)
+        if (currentPosition == Vector3.zero || playerCamera == null)
             return Vector3.zero;
 
         Vector3 camForward = playerCamera.transform.forward;

@@ -5,34 +5,26 @@ using DG.Tweening;
 public class BuildModeController : MonoBehaviour
 {
     [Header("Settings")]
-    public KeyCode exitBuildModeKey = KeyCode.Space;
     public float blockPlacementDelay = 0.15f;
 
     private bool isInBuildMode = false;
     public bool IsInBuildMode => isInBuildMode;
 
-    private GameObject currentSelectedBlock = null;
     private SUPERCharacterAIO playerController;
     private float lastPlacementTime = 0f;
-    private float gridSize = 1.0f; // Block size
 
     [Header("Platform Settings")]
-    public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f); // X, Y, Z
-    public int thinAxisIndex = 1; // 0=X, 1=Y, 2=Z (Y-axis is thin)
-
     [Tooltip("Scale multiplier for platforms and grid system (1.0 = normal size)")]
     [Range(0.1f, 5.0f)]
     public float platformScale = 1.0f;
 
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
-    private System.Collections.Generic.Dictionary<GameObject, Material[]> originalMaterials = new System.Collections.Generic.Dictionary<GameObject, Material[]>();
 
     void Awake()
     {
         // Ensure build mode is exited on game start
         isInBuildMode = false;
-        currentSelectedBlock = null;
     }
 
     void Start()
@@ -60,12 +52,6 @@ public class BuildModeController : MonoBehaviour
         // Hide arrows on start
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
             GameManager.Instance.arrowSystem.HideArrows();
-
-        // Sync grid cell size with adjacency grid
-        if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
-        {
-            GameManager.Instance.adjacencyGrid.SetGridCellSize(platformScale);
-        }
     }
 
     void Update()
@@ -77,20 +63,6 @@ public class BuildModeController : MonoBehaviour
         if (playerController != null)
         {
             playerController.transform.position = savedPlayerPosition;
-        }
-
-        // Update arrows continuously as camera rotates
-        if (currentSelectedBlock != null && GameManager.Instance != null &&
-            GameManager.Instance.arrowSystem != null && playerController != null)
-        {
-            GameManager.Instance.arrowSystem.UpdateArrowPositions(currentSelectedBlock, playerController.playerCamera);
-        }
-
-        // Exit build mode
-        if (Input.GetKeyDown(exitBuildModeKey))
-        {
-            ExitBuildMode();
-            return;
         }
 
         // Handle WASD placement with delay
@@ -107,12 +79,11 @@ public class BuildModeController : MonoBehaviour
         }
     }
 
-    public void EnterBuildMode(GameObject firstBlock)
+    public void EnterBuildMode(Vector3 firstPoint)
     {
         if (isInBuildMode) return;
 
         isInBuildMode = true;
-        currentSelectedBlock = firstBlock;
 
         // Disable player movement but keep camera control enabled
         if (playerController != null)
@@ -126,7 +97,7 @@ public class BuildModeController : MonoBehaviour
             playerController.controllerPaused = true;
             playerController.enableCameraControl = true; // Allow camera orbit
             playerController.buildModeOverride = true;
-            playerController.buildModeOrbitCenter = firstBlock.transform.position;
+            playerController.buildModeOrbitCenter = firstPoint;
 
             // Smoothly transition camera distance for better view
             DOVirtual.Float(
@@ -151,13 +122,10 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
         {
             GameManager.Instance.arrowSystem.platformScale = platformScale;
-            GameManager.Instance.arrowSystem.ShowArrows(firstBlock, playerController.playerCamera);
+            GameManager.Instance.arrowSystem.ShowArrowsAtPosition(firstPoint, playerController.playerCamera);
         }
 
-        // Apply hologram materials to all placed blocks
-        ApplyHologramMaterialsToAllBlocks();
-
-        Debug.Log("BuildModeController: Entered Build Mode - Press SPACE to exit, WASD to place blocks");
+        Debug.Log("BuildModeController: Entered Build Mode - Press E to exit, WASD to place blocks");
     }
 
     public void ExitBuildMode()
@@ -165,7 +133,12 @@ public class BuildModeController : MonoBehaviour
         if (!isInBuildMode) return;
 
         isInBuildMode = false;
-        currentSelectedBlock = null;
+
+        // Finalize current road
+        if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.FinalizeCurrentRoad();
+        }
 
         // Re-enable player movement and disable build mode override
         if (playerController != null)
@@ -182,229 +155,68 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
             GameManager.Instance.arrowSystem.HideArrows();
 
-        // Restore original materials to all blocks
-        RestoreOriginalMaterials();
-
         Debug.Log("BuildModeController: Exited Build Mode");
-    }
-
-    /// <summary>
-    /// Gets the world-space direction of the platform's thin axis
-    /// </summary>
-    private Vector3 GetPlatformThinAxis(GameObject platform)
-    {
-        Vector3 localThinAxis = Vector3.zero;
-        localThinAxis[thinAxisIndex] = 1f; // e.g., Vector3.up for Y-axis
-        return platform.transform.rotation * localThinAxis;
-    }
-
-    /// <summary>
-    /// Gets the half-extent of a platform in a given direction
-    /// </summary>
-    private float GetPlatformExtentInDirection(GameObject platform, Vector3 direction)
-    {
-        Vector3 thinAxis = GetPlatformThinAxis(platform);
-        float parallelComponent = Mathf.Abs(Vector3.Dot(direction.normalized, thinAxis.normalized));
-
-        if (parallelComponent > 0.9f) // Parallel to thin axis (within ~25 degrees)
-        {
-            return (platformLocalDimensions[thinAxisIndex] / 2f) * platformScale; // Half of thin dimension (0.125) * scale
-        }
-        else // Perpendicular to thin axis
-        {
-            return 0.5f * platformScale; // (Half of the 1.0 wide dimension) * scale
-        }
-    }
-
-    /// <summary>
-    /// Calculates center-to-center distance for edge-hinged placement
-    /// New platform hinges from the edge of the current platform
-    /// </summary>
-    private float GetPlacementDistance(GameObject currentPlatform, Vector3 placementDirection)
-    {
-        // For edge-hinged placement where platforms share an edge:
-        // Distance = half of current platform's depth + half of new platform's depth
-        // Since both platforms face their placement direction with LookRotation,
-        // the depth is along their local Z axis (1.0 for our 1×0.25×1 platform)
-
-        // Current platform's extent in placement direction (half-depth)
-        float currentExtent = 0.5f; // Half of 1.0 depth
-
-        // New platform's extent (half-depth from its center to hinge edge)
-        float newExtent = 0.5f; // Half of 1.0 depth
-
-        // Total center-to-center distance, scaled
-        return (currentExtent + newExtent) * platformScale; // = 1.0 * scale
     }
 
     private void PlaceBlockInDirection(KeyCode key)
     {
         if (GameManager.Instance == null) return;
-        if (currentSelectedBlock == null || GameManager.Instance.arrowSystem == null) return;
+        if (GameManager.Instance.arrowSystem == null) return;
+        if (GameManager.Instance.buildingSystem == null) return;
 
         Vector3 direction = GameManager.Instance.arrowSystem.GetPlacementDirection(key);
         if (direction == Vector3.zero) return;
 
-        float placementDistance = GetPlacementDistance(currentSelectedBlock, direction);
-        Vector3 newPosition = currentSelectedBlock.transform.position + direction * placementDistance;
+        // Get current road's latest point
+        Road currentRoad = GameManager.Instance.buildingSystem.GetCurrentRoad();
+        if (currentRoad == null || currentRoad.splinePoints.Count == 0)
+        {
+            Debug.LogError("No current road or no points in road!");
+            return;
+        }
 
-        // Round to (0.25 * platformScale) increments for consistent grid alignment
-        float roundingFactor = 4f / platformScale; // Inverse of grid cell size
+        Vector3 lastPoint = currentRoad.splinePoints[currentRoad.splinePoints.Count - 1];
+
+        float placementDistance = 1.0f * platformScale;  // Fixed distance between points
+        Vector3 newPosition = lastPoint + direction * placementDistance;
+
+        // Round to grid
+        float roundingFactor = 4f / platformScale;
         newPosition = new Vector3(
             Mathf.Round(newPosition.x * roundingFactor) / roundingFactor,
             Mathf.Round(newPosition.y * roundingFactor) / roundingFactor,
             Mathf.Round(newPosition.z * roundingFactor) / roundingFactor
         );
 
-        // Check if position occupied
-        if (GameManager.Instance.adjacencyGrid != null && GameManager.Instance.adjacencyGrid.IsPositionOccupied(newPosition))
-        {
-            Debug.Log("BuildModeController: Position already occupied!");
-            return;
-        }
-
-        // Check block limit
+        // Check point limit
         if (GameManager.Instance.buildingSystem.CurrentBlockCount >= GameManager.Instance.buildingSystem.maxBlocks)
         {
-            Debug.Log($"BuildModeController: Block limit ({GameManager.Instance.buildingSystem.maxBlocks}) reached!");
+            Debug.Log($"Point limit ({GameManager.Instance.buildingSystem.maxBlocks}) reached!");
             return;
         }
 
-        // Rotate platform to face the placement direction (like a wall facing you)
-        // Platform's forward (Z) points toward placement direction, Y stays mostly up
-        Quaternion blockRotation = Quaternion.LookRotation(direction, Vector3.up);
+        // Add point to current road
+        GameManager.Instance.buildingSystem.AddPointToCurrentRoad(newPosition);
 
-        // Place new block with rotation and scale
-        GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, blockRotation);
-
-        // Animate block placement (scale from zero to target scale)
-        Vector3 targetScale = Vector3.one * platformScale;
-        newBlock.transform.localScale = Vector3.zero;
-        newBlock.transform.DOScale(targetScale, 0.15f).SetEase(Ease.OutBack, 1.2f);
-
-        // Apply hologram material immediately when instantiating in build mode
-        if (GameManager.Instance != null && GameManager.Instance.hologramMaterial != null && isInBuildMode)
-        {
-            MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
-            if (renderer != null)
-            {
-                Material[] hologramMaterials = new Material[renderer.materials.Length];
-                for (int i = 0; i < hologramMaterials.Length; i++)
-                {
-                    hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
-                    hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
-                }
-                renderer.materials = hologramMaterials;
-            }
-        }
-
-        // Enable collider (check both parent and children since collider might be on child)
-        Collider blockCollider = newBlock.GetComponentInChildren<Collider>();
-        if (blockCollider != null)
-            blockCollider.enabled = true;
-
-        // Register with adjacency grid
-        if (GameManager.Instance.adjacencyGrid != null)
-            GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, newPosition);
-
-        // Add to building system's block tracking
-        if (GameManager.Instance.buildingSystem != null)
-            GameManager.Instance.buildingSystem.AddBlock(newBlock);
-
-        // Select this block and update camera/arrows
-        SelectBlock(newBlock);
+        // Update orbit center and arrows
+        UpdateOrbitToPoint(newPosition);
         lastPlacementTime = Time.time;
     }
 
-    private void SelectBlock(GameObject newBlock)
+    private void UpdateOrbitToPoint(Vector3 point)
     {
-        currentSelectedBlock = newBlock;
-
-        // Update orbit center for camera
+        // Update orbit center
         if (playerController != null)
         {
-            playerController.buildModeOrbitCenter = newBlock.transform.position;
+            playerController.buildModeOrbitCenter = point;
         }
 
-        // Sync platformScale to arrow system and update arrows
+        // Update arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
         {
             GameManager.Instance.arrowSystem.platformScale = platformScale;
-            GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
+            GameManager.Instance.arrowSystem.ShowArrowsAtPosition(point, playerController.playerCamera);
         }
     }
 
-    /// <summary>
-    /// Applies hologram material to all placed blocks
-    /// </summary>
-    private void ApplyHologramMaterialsToAllBlocks()
-    {
-        if (GameManager.Instance == null || GameManager.Instance.hologramMaterial == null || GameManager.Instance.buildingSystem == null)
-            return;
-
-        // Get all placed blocks from BuildingSystem
-        var buildingSystem = GameManager.Instance.buildingSystem;
-        if (buildingSystem == null) return;
-
-        // We need to access the placed blocks - let's use reflection or add a public property
-        // For now, let's iterate through all GameObjects with the block tag or find them
-        GameObject[] allBlocks = GameObject.FindGameObjectsWithTag("Block");
-
-        foreach (GameObject block in allBlocks)
-        {
-            if (block != null)
-                ApplyHologramMaterialToBlock(block);
-        }
-    }
-
-    /// <summary>
-    /// Applies hologram material to a single block
-    /// </summary>
-    private void ApplyHologramMaterialToBlock(GameObject block)
-    {
-        if (GameManager.Instance == null || GameManager.Instance.hologramMaterial == null || block == null)
-            return;
-
-        MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null)
-        {
-            // Save original materials if not already saved
-            if (!originalMaterials.ContainsKey(block))
-            {
-                originalMaterials[block] = renderer.materials;
-            }
-
-            // Apply hologram material to all material slots with build mode color
-            Material[] hologramMaterials = new Material[renderer.materials.Length];
-            for (int i = 0; i < hologramMaterials.Length; i++)
-            {
-                hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
-                hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
-            }
-            renderer.materials = hologramMaterials;
-        }
-    }
-
-    /// <summary>
-    /// Restores original materials to all blocks
-    /// </summary>
-    private void RestoreOriginalMaterials()
-    {
-        foreach (var kvp in originalMaterials)
-        {
-            GameObject block = kvp.Key;
-            Material[] materials = kvp.Value;
-
-            if (block != null)
-            {
-                MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-                if (renderer != null)
-                {
-                    renderer.materials = materials;
-                }
-            }
-        }
-
-        originalMaterials.Clear();
-    }
 }

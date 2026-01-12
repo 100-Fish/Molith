@@ -41,9 +41,6 @@ public class GameManager : MonoBehaviour
     [Tooltip("Reference to the BuildModeCameraController")]
     public BuildModeCameraController buildCameraController;
 
-    [Tooltip("Reference to the BlockAdjacencyGrid")]
-    public BlockAdjacencyGrid adjacencyGrid;
-
     [Tooltip("Reference to the CameraManager")]
     public CameraManager cameraManager;
 
@@ -118,12 +115,6 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogWarning("GameManager: BuildModeCameraController reference is missing. Attempting to find it...");
             buildCameraController = FindObjectOfType<BuildModeCameraController>();
-        }
-
-        if (adjacencyGrid == null)
-        {
-            Debug.LogWarning("GameManager: BlockAdjacencyGrid reference is missing. Attempting to find it...");
-            adjacencyGrid = FindObjectOfType<BlockAdjacencyGrid>();
         }
 
         if (cameraManager == null)
