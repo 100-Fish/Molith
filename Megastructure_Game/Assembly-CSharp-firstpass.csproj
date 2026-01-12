@@ -73,6 +73,7 @@
     <Compile Include="Assets\Plugins\SUPER Character Controller\Demo Assets\Scripts\OminousOffice\Door.cs" />
     <Compile Include="Assets\Plugins\Demigiant\DOTween\Modules\DOTweenModuleUtils.cs" />
     <Compile Include="Assets\Plugins\Demigiant\DOTween\Modules\DOTweenModuleAudio.cs" />
+    <Compile Include="Assets\Plugins\AudioEventDispatcher.cs" />
     <Compile Include="Assets\Plugins\RogueNoodle\GBCamera\Example Elements\Scripts\FadeMaterials.cs" />
     <Compile Include="Assets\Plugins\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\CollectableCounter.cs" />
     <Compile Include="Assets\Plugins\Demigiant\DOTween\Modules\DOTweenModuleSprite.cs" />
@@ -83,6 +84,7 @@
     <Compile Include="Assets\Plugins\RogueNoodle\GBCamera\Example Elements\Scripts\Rotate.cs" />
     <Compile Include="Assets\Plugins\PSXShaderKit\Scripts\PSXShaderManager.cs" />
     <Compile Include="Assets\Plugins\SUPER Character Controller\Demo Assets\Scripts\SkySweptFortress\MovingPlatform.cs" />
+    <Compile Include="Assets\Plugins\SoundID.cs" />
     <Compile Include="Assets\Plugins\RogueNoodle\GBCamera\Example Elements\Scripts\RandomPaletteButton.cs" />
     <Compile Include="Assets\Plugins\Demigiant\DOTween\Modules\DOTweenModuleUI.cs" />
   </ItemGroup>

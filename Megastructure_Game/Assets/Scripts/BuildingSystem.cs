@@ -276,6 +276,7 @@ public class BuildingSystem : MonoBehaviour
             // Animate destruction (reuse existing animation)
             block.transform.DOScale(Vector3.zero, destructionDuration)
                 .SetEase(Ease.InBack)
+                .OnStart(() => AudioEventDispatcher.PlaySound(SoundID.BlockRemove))
                 .OnComplete(() =>
                 {
                     if (blockToDestroy != null)
@@ -431,7 +432,9 @@ public class BuildingSystem : MonoBehaviour
         Vector3 targetScale = newBlock.transform.localScale;
         newBlock.transform.localScale = Vector3.zero;
 
-        newBlock.transform.DOScale(targetScale, placementDuration).SetEase(Ease.OutBack, 1.2f);
+        newBlock.transform.DOScale(targetScale, placementDuration)
+            .SetEase(Ease.OutBack, 1.2f)
+            .OnStart(() => AudioEventDispatcher.PlaySound(SoundID.BlockPlace));
 
         Destroy(currentPreview);
         currentPreview = null;
