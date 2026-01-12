@@ -17,7 +17,7 @@ public class SoundManager : MonoBehaviour
     [Header("Ambient Music")]
     [SerializeField] private AudioClip ambientMusic;
     [SerializeField] private AudioSource musicPlayer;
-    [SerializeField] [Range(0, 1)] private float musicVolume = 0.5f;
+    [SerializeField][Range(0, 1)] private float musicVolume = 0.5f;
 
     [Header("Sound Effects")]
     [SerializeField]
