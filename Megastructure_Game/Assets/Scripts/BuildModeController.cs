@@ -22,6 +22,7 @@ public class BuildModeController : MonoBehaviour
 
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
+    private float lockedYLevel = 0f; // Stores Y-level when entering build mode
     private System.Collections.Generic.Dictionary<GameObject, Material[]> originalMaterials = new System.Collections.Generic.Dictionary<GameObject, Material[]>();
 
     void Awake()
@@ -110,6 +111,10 @@ public class BuildModeController : MonoBehaviour
         isInBuildMode = true;
         currentSelectedBlock = firstBlock;
 
+        // Lock Y-level to first block's Y position
+        lockedYLevel = firstBlock.transform.position.y;
+        Debug.Log($"BuildModeController: Locked Y-level to {lockedYLevel}");
+
         // Disable player movement but keep camera control enabled
         if (playerController != null)
         {
@@ -118,6 +123,25 @@ public class BuildModeController : MonoBehaviour
 
             // Save current camera distance
             savedCameraDistance = playerController.maxCameraDistInternal;
+
+            // Rotate player to face the first block (Y-axis only)
+            Vector3 directionToBlock = firstBlock.transform.position - playerController.transform.position;
+            directionToBlock.y = 0; // Flatten to XZ plane for Y-axis rotation only
+
+            if (directionToBlock != Vector3.zero)
+            {
+                Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
+                playerController.transform.rotation = targetRotation;
+
+                // Position camera behind player's head looking towards the platform
+                // Calculate angles: yaw from player rotation, slight downward pitch to see platform
+                float yaw = targetRotation.eulerAngles.y;
+                float pitch = 30f; // Look slightly downward at the platform
+
+                // Use RotateView to set camera angles (smooth transition)
+                Vector3 cameraAngles = new Vector3(pitch, yaw, 0f);
+                playerController.RotateView(cameraAngles, true);
+            }
 
             playerController.controllerPaused = true;
             playerController.enableCameraControl = true; // Allow camera orbit
@@ -192,29 +216,22 @@ public class BuildModeController : MonoBehaviour
         Vector3 direction = GameManager.Instance.arrowSystem.GetPlacementDirection(key);
         if (direction == Vector3.zero) return;
 
-        // Detect if placement is diagonal (both X and Z components present)
-        bool isDiagonal = Mathf.Abs(direction.x) > 0.1f && Mathf.Abs(direction.z) > 0.1f;
-
-        // Calculate base position: 1.0 * platformScale distance in horizontal direction
+        // Force direction to be horizontal-only (ignore vertical component)
         Vector3 horizontalDirection = new Vector3(direction.x, 0, direction.z).normalized;
-        Vector3 newPosition = currentSelectedBlock.transform.position + horizontalDirection * (1.0f * platformScale);
 
-        // Round to 1.0 * platformScale grid increments
+        // Calculate new position using locked Y-level
         float gridIncrement = 1.0f * platformScale;
+        Vector3 newPosition = currentSelectedBlock.transform.position +
+                             horizontalDirection * (1.0f * platformScale);
+
+        // Round to grid increments with LOCKED Y-LEVEL
         newPosition = new Vector3(
             Mathf.Round(newPosition.x / gridIncrement) * gridIncrement,
-            currentSelectedBlock.transform.position.y, // Start at same Y level
+            lockedYLevel, // ALWAYS use locked Y-level
             Mathf.Round(newPosition.z / gridIncrement) * gridIncrement
         );
 
-        // If diagonal placement, add +1 height level
-        if (isDiagonal)
-        {
-            newPosition.y += gridIncrement; // +1 level
-        }
-
-        // Round Y to integer levels
-        newPosition.y = Mathf.Round(newPosition.y / gridIncrement) * gridIncrement;
+        Debug.Log($"BuildModeController: Placing block at Y={newPosition.y} (locked level)");
 
         // Check if platform already exists at this XZ coordinate
         GameObject existingPlatform = null;
@@ -329,7 +346,7 @@ public class BuildModeController : MonoBehaviour
     {
         currentSelectedBlock = newBlock;
 
-        // Update orbit center for camera
+        // Update orbit center for camera (camera will orbit around the new block)
         if (playerController != null)
         {
             playerController.buildModeOrbitCenter = newBlock.transform.position;

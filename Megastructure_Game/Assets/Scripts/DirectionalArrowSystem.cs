@@ -143,35 +143,21 @@ public class DirectionalArrowSystem : MonoBehaviour
 
         Vector3 blockCenter = currentBlock.transform.position;
 
-        // Determine camera orientation
+        // ALWAYS use horizontal mode (Y-level locking)
         Vector3 camForward = playerCamera.transform.forward;
-        float pitch = Vector3.Angle(camForward, Vector3.down) - 90f;
-        bool showHorizontal = Mathf.Abs(pitch) < 45f;
+
+        // Flatten camera forward to XZ plane
+        Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
+        Vector3 camRightFlat = new Vector3(playerCamera.transform.right.x, 0,
+                                           playerCamera.transform.right.z).normalized;
 
         Vector3[] newCardinalDirections = new Vector3[4];
 
-        if (showHorizontal)
-        {
-            // Horizontal mode - quantize to 8 diagonal directions
-            Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
-            Vector3 camRightFlat = new Vector3(playerCamera.transform.right.x, 0, playerCamera.transform.right.z).normalized;
-
-            // W = forward, A = left, S = back, D = right (relative to camera)
-            newCardinalDirections[0] = QuantizeTo8Directions(camForwardFlat);
-            newCardinalDirections[1] = QuantizeTo8Directions(-camRightFlat);
-            newCardinalDirections[2] = QuantizeTo8Directions(-camForwardFlat);
-            newCardinalDirections[3] = QuantizeTo8Directions(camRightFlat);
-        }
-        else
-        {
-            // Vertical mode - use 3D diagonal quantization
-            Vector3 camForwardFull = playerCamera.transform.forward;
-
-            newCardinalDirections[0] = QuantizeTo3DDiagonals(camForwardFull);
-            newCardinalDirections[1] = QuantizeTo3DDiagonals(Quaternion.Euler(0, -90, 0) * camForwardFull);
-            newCardinalDirections[2] = QuantizeTo3DDiagonals(-camForwardFull);
-            newCardinalDirections[3] = QuantizeTo3DDiagonals(Quaternion.Euler(0, 90, 0) * camForwardFull);
-        }
+        // W = forward, A = left, S = back, D = right (relative to camera)
+        newCardinalDirections[0] = QuantizeTo8Directions(camForwardFlat);
+        newCardinalDirections[1] = QuantizeTo8Directions(-camRightFlat);
+        newCardinalDirections[2] = QuantizeTo8Directions(-camForwardFlat);
+        newCardinalDirections[3] = QuantizeTo8Directions(camRightFlat);
 
         // Calculate target world positions based on cardinal directions
         for (int i = 0; i < 4; i++)
@@ -237,36 +223,16 @@ public class DirectionalArrowSystem : MonoBehaviour
             return Vector3.zero;
 
         Vector3 camForward = playerCamera.transform.forward;
-        float pitch = Vector3.Angle(camForward, Vector3.down) - 90f;
-        bool isHorizontal = Mathf.Abs(pitch) < 45f;
+        // ALWAYS use horizontal mode - ignore vertical component
+        Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
 
-        if (isHorizontal)
+        switch (key)
         {
-            // Horizontal mode - quantize camera yaw to nearest 45-degree direction
-            Vector3 camForwardFlat = new Vector3(camForward.x, 0, camForward.z).normalized;
-
-            switch (key)
-            {
-                case KeyCode.W: return QuantizeTo8Directions(camForwardFlat);
-                case KeyCode.A: return QuantizeTo8Directions(Quaternion.Euler(0, -90, 0) * camForwardFlat);
-                case KeyCode.S: return QuantizeTo8Directions(-camForwardFlat);
-                case KeyCode.D: return QuantizeTo8Directions(Quaternion.Euler(0, 90, 0) * camForwardFlat);
-                default: return Vector3.zero;
-            }
-        }
-        else
-        {
-            // Vertical mode - use 3D diagonal quantization
-            Vector3 camForwardFull = playerCamera.transform.forward;
-
-            switch (key)
-            {
-                case KeyCode.W: return QuantizeTo3DDiagonals(camForwardFull);
-                case KeyCode.A: return QuantizeTo3DDiagonals(Quaternion.Euler(0, -90, 0) * camForwardFull);
-                case KeyCode.S: return QuantizeTo3DDiagonals(-camForwardFull);
-                case KeyCode.D: return QuantizeTo3DDiagonals(Quaternion.Euler(0, 90, 0) * camForwardFull);
-                default: return Vector3.zero;
-            }
+            case KeyCode.W: return QuantizeTo8Directions(camForwardFlat);
+            case KeyCode.A: return QuantizeTo8Directions(Quaternion.Euler(0, -90, 0) * camForwardFlat);
+            case KeyCode.S: return QuantizeTo8Directions(-camForwardFlat);
+            case KeyCode.D: return QuantizeTo8Directions(Quaternion.Euler(0, 90, 0) * camForwardFlat);
+            default: return Vector3.zero;
         }
     }
 
