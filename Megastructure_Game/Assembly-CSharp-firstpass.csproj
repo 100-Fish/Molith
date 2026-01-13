@@ -1031,7 +1031,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="Scripts.csproj" />
+    <ProjectReference Include="Audio.csproj" />
     <ProjectReference Include="SUPERCharacterController.csproj" />
   </ItemGroup>
   <Import Project="Sdk.targets" Sdk="Microsoft.NET.Sdk" />

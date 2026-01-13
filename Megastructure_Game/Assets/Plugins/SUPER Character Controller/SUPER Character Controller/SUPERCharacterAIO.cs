@@ -716,9 +716,16 @@ namespace SUPERCharacter
                                     headRot.y += headRot.y > 180 ? -360 : headRot.y < -180 ? 360 : 0;
                                     headRot.x += headRot.x > 180 ? -360 : headRot.x < -180 ? 360 : 0;
 
-                                    // Remove vertical rotation limit in build mode
-                                    if (!buildModeOverride)
+                                    // Apply different rotation limits based on build mode
+                                    if (buildModeOverride)
                                     {
+                                        // Build mode: Restrict to hemisphere above (0° to +90°)
+                                        // 0° = looking forward, +90° = looking straight down
+                                        headRot.x = Mathf.Clamp(headRot.x, 0f, 90f);
+                                    }
+                                    else
+                                    {
+                                        // Normal mode: Standard vertical rotation range
                                         headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
                                     }
 
@@ -807,9 +814,16 @@ namespace SUPERCharacter
                                     headRot.y += headRot.y > 180 ? -360 : headRot.y < -180 ? 360 : 0;
                                     headRot.x += headRot.x > 180 ? -360 : headRot.x < -180 ? 360 : 0;
 
-                                    // Remove vertical rotation limit in build mode
-                                    if (!buildModeOverride)
+                                    // Apply different rotation limits based on build mode
+                                    if (buildModeOverride)
                                     {
+                                        // Build mode: Restrict to hemisphere above (0° to +90°)
+                                        // 0° = looking forward, +90° = looking straight down
+                                        headRot.x = Mathf.Clamp(headRot.x, 0f, 90f);
+                                    }
+                                    else
+                                    {
+                                        // Normal mode: Standard vertical rotation range
                                         headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
                                     }
                                     yield return null;
@@ -824,7 +838,17 @@ namespace SUPERCharacter
                             headRot = AbsoluteEulerAngles;
                             headRot.y += headRot.y > 180 ? -360 : headRot.y < -180 ? 360 : 0;
                             headRot.x += headRot.x > 180 ? -360 : headRot.x < -180 ? 360 : 0;
-                            headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
+
+                            // Apply different rotation limits based on build mode
+                            if (buildModeOverride)
+                            {
+                                headRot.x = Mathf.Clamp(headRot.x, 0f, 90f);
+                            }
+                            else
+                            {
+                                headRot.x = Mathf.Clamp(headRot.x, -0.5f * verticalRotationRange, 0.5f * verticalRotationRange);
+                            }
+
                             quatHeadRot = Quaternion.Euler(headRot);
                             if (doingCamInterp) { }
                         }

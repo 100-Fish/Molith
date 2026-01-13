@@ -19,6 +19,25 @@ public class BuildingSystem : MonoBehaviour
     [Tooltip("Key to hold for placing blocks")]
     public KeyCode placeKey = KeyCode.E;
 
+    [Tooltip("Maximum raycast distance for preview placement")]
+    public float maxRaycastDistance = 100f;
+
+    [Tooltip("LayerMask for raycast (should include ground and blocks)")]
+    public LayerMask placementRaycastLayers = -1; // Default: all layers
+
+    [Header("Visual Settings")]
+    [Tooltip("Optional LineRenderer prefab for raycast visualization. If not assigned, one will be created automatically.")]
+    public GameObject raycastLinePrefab;
+
+    [Tooltip("Show raycast line visualization")]
+    public bool showRaycastLine = true;
+
+    [Tooltip("Color of raycast line (used when no prefab is assigned)")]
+    public Color raycastLineColor = new Color(0, 1, 1, 0.5f); // Cyan with alpha
+
+    [Tooltip("Width of raycast line (used when no prefab is assigned)")]
+    public float raycastLineWidth = 0.02f;
+
     [Header("Destruction Settings")]
     [Tooltip("Key to hold for destroying blocks")]
     public KeyCode destroyKey = KeyCode.Q;
@@ -41,9 +60,11 @@ public class BuildingSystem : MonoBehaviour
     private bool isPlacementMode = false;
     private bool isDestructionMode = false;
     private Vector3 previewPosition;
+    private bool lastRaycastHit = false; // Track if raycast hit something for placement validation
     private readonly HashSet<GameObject> placedBlocks = new();
     private Material previewMaterialInstance;
     private Material destructionMaterialInstance;
+    private LineRenderer raycastLineRenderer;
 
     private readonly Dictionary<GameObject, Material[]> originalMaterials = new();
 
@@ -93,6 +114,50 @@ public class BuildingSystem : MonoBehaviour
 
         destructionMaterialInstance = new Material(GameManager.Instance.hologramMaterial);
         destructionMaterialInstance.SetColor("_Color", GameManager.Instance.destructionColor);
+
+        // Initialize LineRenderer for raycast visualization
+        InitializeRaycastLineRenderer();
+    }
+
+    void InitializeRaycastLineRenderer()
+    {
+        GameObject lineObj;
+
+        // Use prefab if assigned, otherwise create programmatically
+        if (raycastLinePrefab != null)
+        {
+            lineObj = Instantiate(raycastLinePrefab, transform);
+            lineObj.name = "RaycastLine";
+            raycastLineRenderer = lineObj.GetComponent<LineRenderer>();
+
+            if (raycastLineRenderer == null)
+            {
+                Debug.LogWarning("BuildingSystem: Assigned raycast line prefab does not have a LineRenderer component! Creating one programmatically instead.");
+                raycastLineRenderer = lineObj.AddComponent<LineRenderer>();
+            }
+        }
+        else
+        {
+            // Fallback: create LineRenderer programmatically
+            lineObj = new GameObject("RaycastLine");
+            lineObj.transform.SetParent(transform);
+            raycastLineRenderer = lineObj.AddComponent<LineRenderer>();
+        }
+
+        // Configure LineRenderer (prefab settings will override these if prefab is used)
+        raycastLineRenderer.positionCount = 2;
+
+        // Only apply these settings if creating programmatically (no prefab)
+        if (raycastLinePrefab == null)
+        {
+            raycastLineRenderer.startWidth = raycastLineWidth;
+            raycastLineRenderer.endWidth = raycastLineWidth;
+            raycastLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+            raycastLineRenderer.startColor = raycastLineColor;
+            raycastLineRenderer.endColor = raycastLineColor;
+        }
+
+        raycastLineRenderer.enabled = false;
     }
 
     void Update()
@@ -387,11 +452,40 @@ public class BuildingSystem : MonoBehaviour
     void UpdatePreviewPosition()
     {
         Camera cam = GameManager.Instance.playerController.playerCamera;
-        previewPosition = cam.transform.position + cam.transform.forward * placementDistance;
+        Vector3 rayOrigin = cam.transform.position;
+        Vector3 rayDirection = cam.transform.forward;
+
+        RaycastHit hit;
+        bool hitSomething = Physics.Raycast(rayOrigin, rayDirection, out hit,
+                                            maxRaycastDistance, placementRaycastLayers);
+
+        // Store hit state for placement validation
+        lastRaycastHit = hitSomething;
+
+        if (hitSomething)
+        {
+            previewPosition = hit.point;
+        }
+        else
+        {
+            previewPosition = rayOrigin + rayDirection * maxRaycastDistance;
+        }
 
         if (isPlacementMode && currentPreview != null)
         {
             currentPreview.transform.position = previewPosition;
+        }
+
+        // Update LineRenderer visualization
+        if (showRaycastLine && raycastLineRenderer != null)
+        {
+            raycastLineRenderer.enabled = isPlacementMode;
+
+            if (isPlacementMode)
+            {
+                raycastLineRenderer.SetPosition(0, rayOrigin);
+                raycastLineRenderer.SetPosition(1, hitSomething ? hit.point : previewPosition);
+            }
         }
     }
 
@@ -426,6 +520,13 @@ public class BuildingSystem : MonoBehaviour
     {
         if (currentPreview == null || cubePrefab == null)
             return;
+
+        // Don't place if raycast didn't hit anything
+        if (!lastRaycastHit)
+        {
+            Debug.Log("Cannot place block: Raycast did not hit any surface");
+            return;
+        }
 
         // Check if we've reached the block limit
         if (CurrentBlockCount >= maxBlocks)
@@ -491,6 +592,12 @@ public class BuildingSystem : MonoBehaviour
 
         Destroy(currentPreview);
         currentPreview = null;
+
+        // Hide raycast line
+        if (raycastLineRenderer != null)
+        {
+            raycastLineRenderer.enabled = false;
+        }
 
         // Register with adjacency grid
         if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
@@ -621,5 +728,9 @@ public class BuildingSystem : MonoBehaviour
 
         if (destructionMaterialInstance != null)
             Destroy(destructionMaterialInstance);
+
+        // Clean up LineRenderer
+        if (raycastLineRenderer != null)
+            Destroy(raycastLineRenderer.gameObject);
     }
 }
