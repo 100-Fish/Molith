@@ -202,6 +202,12 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
             GameManager.Instance.arrowSystem.HideArrows();
 
+        // Hide the raycast line
+        if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.HideRaycastLine();
+        }
+
         // Restore original materials to all blocks
         RestoreOriginalMaterials();
 
