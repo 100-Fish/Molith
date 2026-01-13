@@ -83,6 +83,12 @@ public class BuildModeController : MonoBehaviour
             GameManager.Instance.arrowSystem.UpdateArrowPositions(currentSelectedBlock, playerController.playerCamera);
         }
 
+        // Update line to current selected block
+        if (currentSelectedBlock != null && GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.UpdateLineToBlock(currentSelectedBlock);
+        }
+
         // Exit build mode
         if (Input.GetKeyDown(exitBuildModeKey))
         {

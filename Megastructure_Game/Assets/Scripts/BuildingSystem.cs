@@ -35,27 +35,17 @@ public class BuildingSystem : MonoBehaviour
     [Tooltip("Show raycast line visualization")]
     public bool showRaycastLine = true;
 
-    [Tooltip("Color of raycast line (used when no prefab is assigned)")]
-    public Color raycastLineColor = new Color(0, 1, 1, 0.5f); // Cyan with alpha
-
     [Tooltip("Width of raycast line (used when no prefab is assigned)")]
     public float raycastLineWidth = 0.02f;
 
     [Tooltip("Number of segments in the parabola curve")]
     public int parabolaSegments = 20;
 
-    [Tooltip("Vertical height of the parabola arc")]
-    public float parabolaHeight = 2f;
+    [Tooltip("Horizontal curvature of the parabola arc (sideways displacement)")]
+    public float parabolaHorizontalCurve = 2f;
 
-    [Header("Backpack Animation Settings")]
-    [Tooltip("Scale punch strength when placing blocks (inward squeeze)")]
-    public float placePunchStrength = 0.2f;
-
-    [Tooltip("Scale punch strength when destroying blocks (outward expand)")]
-    public float destroyPunchStrength = 0.3f;
-
-    [Tooltip("Duration of backpack punch animation")]
-    public float punchDuration = 0.3f;
+    [Tooltip("Duration of line endpoint transition between blocks")]
+    public float lineTransitionDuration = 0.3f;
 
     [Header("Destruction Settings")]
     [Tooltip("Key to hold for destroying blocks")]
@@ -84,8 +74,11 @@ public class BuildingSystem : MonoBehaviour
     private Material previewMaterialInstance;
     private Material destructionMaterialInstance;
     private LineRenderer raycastLineRenderer;
+    private Vector3 currentLineEndpoint; // Current endpoint for lerping
+    private Tweener lineEndpointTween; // Active tween for line endpoint
 
     private readonly Dictionary<GameObject, Material[]> originalMaterials = new();
+    private readonly Dictionary<GameObject, LineRenderer> destructionLines = new(); // Lines for each block being destroyed
 
     // FIFO Destruction System
     private readonly List<GameObject> fifoBlockList = new(); // Maintains insertion order
@@ -172,8 +165,11 @@ public class BuildingSystem : MonoBehaviour
             raycastLineRenderer.startWidth = raycastLineWidth;
             raycastLineRenderer.endWidth = raycastLineWidth;
             raycastLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
-            raycastLineRenderer.startColor = raycastLineColor;
-            raycastLineRenderer.endColor = raycastLineColor;
+
+            // Set initial color from GameManager
+            Color initialColor = GameManager.Instance != null ? GameManager.Instance.placementColor : Color.cyan;
+            raycastLineRenderer.startColor = initialColor;
+            raycastLineRenderer.endColor = initialColor;
         }
 
         raycastLineRenderer.enabled = false;
@@ -189,6 +185,7 @@ public class BuildingSystem : MonoBehaviour
 
         HandlePlacementInput();
         HandleDestructionInput();
+        UpdatePersistentDestructionLines();
     }
 
     void HandlePlacementInput()
@@ -269,6 +266,9 @@ public class BuildingSystem : MonoBehaviour
                 highlightCoroutine = null;
             }
 
+            // Hide the line when releasing destroy key
+            HideRaycastLine();
+
             // If no blocks highlighted (quick release), do nothing
             if (highlightedBlocks.Count == 0)
                 return;
@@ -326,6 +326,12 @@ public class BuildingSystem : MonoBehaviour
 
                 // Add to highlighted list
                 highlightedBlocks.Add(block);
+
+                // Create persistent line for this block
+                CreatePersistentDestructionLine(block);
+
+                // Update main line to point at this block in destroy mode
+                UpdateLineToBlock(block, true);
             }
 
             blockIndex++;
@@ -387,14 +393,21 @@ public class BuildingSystem : MonoBehaviour
                 .OnComplete(() =>
                 {
                     if (blockToDestroy != null)
-                        Destroy(blockToDestroy);
-                });
+                    {
+                        // Destroy the persistent line for this block
+                        if (destructionLines.ContainsKey(blockToDestroy))
+                        {
+                            LineRenderer lineToDestroy = destructionLines[blockToDestroy];
+                            if (lineToDestroy != null)
+                            {
+                                Destroy(lineToDestroy.gameObject);
+                            }
+                            destructionLines.Remove(blockToDestroy);
+                        }
 
-            // Animate backpack - punch outward (expand)
-            if (playerBackpack != null)
-            {
-                playerBackpack.DOPunchScale(Vector3.one * destroyPunchStrength, punchDuration, 10, 1f);
-            }
+                        Destroy(blockToDestroy);
+                    }
+                });
 
             // Wait before destroying next block
             yield return new WaitForSeconds(destructionSequenceDelay);
@@ -425,6 +438,19 @@ public class BuildingSystem : MonoBehaviour
         }
 
         highlightedBlocks.Clear();
+
+        // Clean up all persistent destruction lines
+        foreach (var kvp in destructionLines)
+        {
+            if (kvp.Value != null)
+            {
+                Destroy(kvp.Value.gameObject);
+            }
+        }
+        destructionLines.Clear();
+
+        // Hide the line when exiting destruction mode
+        HideRaycastLine();
     }
 
     void CreatePreviewBlock()
@@ -519,15 +545,27 @@ public class BuildingSystem : MonoBehaviour
                 Vector3 startPos = playerBackpack != null ? playerBackpack.position : rayOrigin;
                 Vector3 endPos = hit.point;
 
-                // Draw parabola from backpack to hit point
-                DrawParabola(startPos, endPos);
+                // Draw parabola from backpack to hit point with horizontal curve for preview mode
+                DrawParabola(startPos, endPos, true);
             }
         }
     }
 
-    void DrawParabola(Vector3 start, Vector3 end)
+    void DrawParabola(Vector3 start, Vector3 end, bool useHorizontalCurve = false)
     {
         if (raycastLineRenderer == null) return;
+
+        // Calculate right direction from backpack (perpendicular to forward direction)
+        Vector3 rightDirection = Vector3.zero;
+        if (useHorizontalCurve && playerBackpack != null)
+        {
+            // Get camera forward direction to determine "right"
+            Camera cam = GameManager.Instance?.playerController?.playerCamera;
+            if (cam != null)
+            {
+                rightDirection = cam.transform.right;
+            }
+        }
 
         // Calculate parabola points
         for (int i = 0; i <= parabolaSegments; i++)
@@ -537,10 +575,20 @@ public class BuildingSystem : MonoBehaviour
             // Linear interpolation between start and end
             Vector3 linearPoint = Vector3.Lerp(start, end, t);
 
-            // Add parabolic height (peaks at the middle)
-            // Using formula: height * 4 * t * (1 - t) which creates a parabola peaking at t=0.5
-            float parabolaOffset = parabolaHeight * 4f * t * (1f - t);
-            linearPoint.y += parabolaOffset;
+            // Add parabolic offset (peaks at the middle)
+            // Using formula: curve * 4 * t * (1 - t) which creates a parabola peaking at t=0.5
+            float parabolaOffset = 4f * t * (1f - t);
+
+            if (useHorizontalCurve)
+            {
+                // Horizontal curvature - offset to the right
+                linearPoint += rightDirection * (parabolaHorizontalCurve * parabolaOffset);
+            }
+            else
+            {
+                // Vertical curvature - offset upward (keep old parabolaHeight for backward compatibility)
+                linearPoint.y += 2f * parabolaOffset; // Using 2f as default vertical height
+            }
 
             raycastLineRenderer.SetPosition(i, linearPoint);
         }
@@ -551,6 +599,180 @@ public class BuildingSystem : MonoBehaviour
         if (raycastLineRenderer != null)
         {
             raycastLineRenderer.enabled = false;
+
+            // Kill active tween if exists
+            if (lineEndpointTween != null)
+            {
+                lineEndpointTween.Kill();
+                lineEndpointTween = null;
+            }
+        }
+    }
+
+    public void SetLineColor(Color color)
+    {
+        if (raycastLineRenderer != null)
+        {
+            raycastLineRenderer.startColor = color;
+            raycastLineRenderer.endColor = color;
+        }
+    }
+
+    public void UpdateLineToBlock(GameObject targetBlock, bool isDestroyMode = false)
+    {
+        if (raycastLineRenderer == null || targetBlock == null || playerBackpack == null)
+            return;
+
+        // Get color from GameManager based on mode
+        Color lineColor = Color.cyan; // Fallback
+        if (GameManager.Instance != null)
+        {
+            lineColor = isDestroyMode ? GameManager.Instance.destructionColor : GameManager.Instance.placementColor;
+        }
+        SetLineColor(lineColor);
+
+        // Use backpack position as start
+        Vector3 startPos = playerBackpack.position;
+
+        // Calculate target end position at the top of the platform block
+        Vector3 targetEndPos = targetBlock.transform.position;
+        float halfBlockHeight = targetBlock.transform.localScale.y * 0.5f;
+        targetEndPos.y += halfBlockHeight; // Move to top of block
+
+        // Show the line
+        raycastLineRenderer.enabled = true;
+
+        // Kill existing tween if active
+        if (lineEndpointTween != null)
+        {
+            lineEndpointTween.Kill();
+        }
+
+        // Lerp the endpoint to the new target position
+        lineEndpointTween = DOTween.To(
+            () => currentLineEndpoint,
+            x => {
+                currentLineEndpoint = x;
+                DrawParabola(startPos, currentLineEndpoint, false);
+            },
+            targetEndPos,
+            lineTransitionDuration
+        ).SetEase(Ease.OutCubic);
+    }
+
+    void CreatePersistentDestructionLine(GameObject targetBlock)
+    {
+        if (targetBlock == null || playerBackpack == null)
+            return;
+
+        // Don't create duplicate lines
+        if (destructionLines.ContainsKey(targetBlock))
+            return;
+
+        // Create a new LineRenderer for this block
+        GameObject lineObj;
+        LineRenderer lineRenderer;
+
+        if (raycastLinePrefab != null)
+        {
+            lineObj = Instantiate(raycastLinePrefab, transform);
+            lineObj.name = $"DestructionLine_{targetBlock.name}";
+            lineRenderer = lineObj.GetComponent<LineRenderer>();
+
+            if (lineRenderer == null)
+            {
+                lineRenderer = lineObj.AddComponent<LineRenderer>();
+            }
+        }
+        else
+        {
+            lineObj = new GameObject($"DestructionLine_{targetBlock.name}");
+            lineObj.transform.SetParent(transform);
+            lineRenderer = lineObj.AddComponent<LineRenderer>();
+
+            // Configure LineRenderer
+            lineRenderer.startWidth = raycastLineWidth;
+            lineRenderer.endWidth = raycastLineWidth;
+            lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        }
+
+        // Set position count and color from GameManager
+        lineRenderer.positionCount = parabolaSegments + 1;
+        Color destroyColor = GameManager.Instance != null ? GameManager.Instance.destructionColor : Color.red;
+        lineRenderer.startColor = destroyColor;
+        lineRenderer.endColor = destroyColor;
+
+        // Calculate positions
+        Vector3 startPos = playerBackpack.position;
+        Vector3 endPos = targetBlock.transform.position;
+        float halfBlockHeight = targetBlock.transform.localScale.y * 0.5f;
+        endPos.y += halfBlockHeight;
+
+        // Draw the line
+        DrawParabolaForRenderer(lineRenderer, startPos, endPos, false);
+
+        // Store in dictionary
+        destructionLines[targetBlock] = lineRenderer;
+    }
+
+    void DrawParabolaForRenderer(LineRenderer renderer, Vector3 start, Vector3 end, bool useHorizontalCurve = false)
+    {
+        if (renderer == null) return;
+
+        // Calculate right direction from backpack (perpendicular to forward direction)
+        Vector3 rightDirection = Vector3.zero;
+        if (useHorizontalCurve && playerBackpack != null)
+        {
+            Camera cam = GameManager.Instance?.playerController?.playerCamera;
+            if (cam != null)
+            {
+                rightDirection = cam.transform.right;
+            }
+        }
+
+        // Calculate parabola points
+        for (int i = 0; i <= parabolaSegments; i++)
+        {
+            float t = i / (float)parabolaSegments;
+            Vector3 linearPoint = Vector3.Lerp(start, end, t);
+            float parabolaOffset = 4f * t * (1f - t);
+
+            if (useHorizontalCurve)
+            {
+                linearPoint += rightDirection * (parabolaHorizontalCurve * parabolaOffset);
+            }
+            else
+            {
+                linearPoint.y += 2f * parabolaOffset;
+            }
+
+            renderer.SetPosition(i, linearPoint);
+        }
+    }
+
+    void UpdatePersistentDestructionLines()
+    {
+        // Only update if in destruction mode and player backpack exists
+        if (!isDestructionMode || playerBackpack == null || destructionLines.Count == 0)
+            return;
+
+        // Update all persistent destruction lines with current backpack position
+        foreach (var kvp in destructionLines)
+        {
+            GameObject targetBlock = kvp.Key;
+            LineRenderer lineRenderer = kvp.Value;
+
+            if (targetBlock == null || lineRenderer == null)
+                continue;
+
+            // Recalculate positions from current backpack position
+            Vector3 startPos = playerBackpack.position;
+            Vector3 endPos = targetBlock.transform.position;
+            float halfBlockHeight = targetBlock.transform.localScale.y * 0.5f;
+            endPos.y += halfBlockHeight;
+
+            // Redraw the line
+            DrawParabolaForRenderer(lineRenderer, startPos, endPos, false);
         }
     }
 
@@ -654,12 +876,6 @@ public class BuildingSystem : MonoBehaviour
         newBlock.transform.DOScale(targetScale, placementDuration)
             .SetEase(Ease.OutBack, 1.2f)
             .OnStart(() => AudioEventDispatcher.PlaySound(SoundID.BlockPlace));
-
-        // Animate backpack - punch inward (squeeze)
-        if (playerBackpack != null)
-        {
-            playerBackpack.DOPunchScale(Vector3.one * -placePunchStrength, punchDuration, 10, 1f);
-        }
 
         Destroy(currentPreview);
         currentPreview = null;
