@@ -3,7 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assembly-CSharp-firstpass", "Assembly-CSharp-firstpass.csproj", "{94455AB3-54B2-AAFA-8058-6480CDD04E19}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Audio", "Audio.csproj", "{BA934068-29F5-3008-D4A8-E6238E4D6364}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assembly-CSharp", "Assembly-CSharp.csproj", "{5536297A-D420-8653-34E7-D1E04A48DC8E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SUPERCharacterController", "SUPERCharacterController.csproj", "{BE2087BC-00AB-5428-A698-74A20DEA0A2F}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Assembly-CSharp-Editor", "Assembly-CSharp-Editor.csproj", "{9493B32B-EAD4-138D-E99F-6FB4B30404F0}"
 EndProject
@@ -17,10 +21,18 @@ Global
 		{94455AB3-54B2-AAFA-8058-6480CDD04E19}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{94455AB3-54B2-AAFA-8058-6480CDD04E19}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{94455AB3-54B2-AAFA-8058-6480CDD04E19}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA934068-29F5-3008-D4A8-E6238E4D6364}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA934068-29F5-3008-D4A8-E6238E4D6364}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA934068-29F5-3008-D4A8-E6238E4D6364}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA934068-29F5-3008-D4A8-E6238E4D6364}.Release|Any CPU.Build.0 = Release|Any CPU
 		{5536297A-D420-8653-34E7-D1E04A48DC8E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{5536297A-D420-8653-34E7-D1E04A48DC8E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5536297A-D420-8653-34E7-D1E04A48DC8E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5536297A-D420-8653-34E7-D1E04A48DC8E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BE2087BC-00AB-5428-A698-74A20DEA0A2F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BE2087BC-00AB-5428-A698-74A20DEA0A2F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BE2087BC-00AB-5428-A698-74A20DEA0A2F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BE2087BC-00AB-5428-A698-74A20DEA0A2F}.Release|Any CPU.Build.0 = Release|Any CPU
 		{9493B32B-EAD4-138D-E99F-6FB4B30404F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{9493B32B-EAD4-138D-E99F-6FB4B30404F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{9493B32B-EAD4-138D-E99F-6FB4B30404F0}.Release|Any CPU.ActiveCfg = Release|Any CPU

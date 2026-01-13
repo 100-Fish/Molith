@@ -1,0 +1,19 @@
+{
+    "name": "SUPERCharacterController",
+    "rootNamespace": "SUPERCharacter",
+    "references": [
+        "Audio",
+        "DOTween.Modules"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [
+        "DOTween.dll"
+    ],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
