@@ -14,9 +14,6 @@ public class DirectionalArrowSystem : MonoBehaviour
     public string[] wasdLabels = new string[] { "W", "A", "S", "D" };
 
     [Header("Platform Configuration")]
-    public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f);
-    public int thinAxisIndex = 1; // Y-axis is thin
-
     [Tooltip("Scale multiplier for platforms (should match BuildModeController)")]
     [Range(0.1f, 5.0f)]
     public float platformScale = 1.0f;
@@ -140,34 +137,6 @@ public class DirectionalArrowSystem : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Gets the world-space direction of the platform's thin axis
-    /// </summary>
-    private Vector3 GetPlatformThinAxis(GameObject platform)
-    {
-        Vector3 localThinAxis = Vector3.zero;
-        localThinAxis[thinAxisIndex] = 1f;
-        return platform.transform.rotation * localThinAxis;
-    }
-
-    /// <summary>
-    /// Gets the half-extent of a platform in a given direction
-    /// </summary>
-    private float GetPlatformExtentInDirection(GameObject platform, Vector3 direction)
-    {
-        Vector3 thinAxis = GetPlatformThinAxis(platform);
-        float parallelComponent = Mathf.Abs(Vector3.Dot(direction.normalized, thinAxis.normalized));
-
-        if (parallelComponent > 0.9f) // Parallel to thin axis
-        {
-            return (platformLocalDimensions[thinAxisIndex] / 2f) * platformScale; // 0.125 * scale
-        }
-        else // Perpendicular
-        {
-            return 0.5f * platformScale; // (Half of 1.0 dimension) * scale
-        }
-    }
-
     private void UpdateArrowPositions()
     {
         if (currentBlock == null || playerCamera == null) return;
@@ -207,7 +176,8 @@ public class DirectionalArrowSystem : MonoBehaviour
         // Calculate target world positions based on cardinal directions
         for (int i = 0; i < 4; i++)
         {
-            float platformExtent = GetPlatformExtentInDirection(currentBlock, newCardinalDirections[i]);
+            // Platforms are 1x1x1 cubes, so extent is always 0.5 * scale
+            float platformExtent = 0.5f * platformScale;
             Vector3 newTargetWorldPos = blockCenter + newCardinalDirections[i] * (platformExtent + arrowOffset);
 
             // Check if cardinal direction changed - if so, use DOTween
