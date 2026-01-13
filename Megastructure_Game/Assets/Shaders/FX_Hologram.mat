@@ -41,7 +41,7 @@ Material:
     - _OutlineOpacity: 0.9
     - _OutlineWidth: 0.03
     - _Scale: 0.5
-    - _ScrollSpeedV: 0.1
+    - _ScrollSpeedV: 5
     m_Colors:
     - _Color: {r: 1, g: 0.5294118, b: 0, a: 1}
   m_BuildTextureStacks: []
