@@ -8,7 +8,7 @@ public class BlockAdjacencyGrid : MonoBehaviour
 
     public void SetGridCellSize(float scale)
     {
-        gridCellSize = 0.25f * scale;
+        gridCellSize = 1.0f * scale; // Changed from 0.25f to 1.0f for cube-based grid
     }
 
     public void RegisterBlock(GameObject block, Vector3 worldPosition)
@@ -40,6 +40,25 @@ public class BlockAdjacencyGrid : MonoBehaviour
     {
         Vector3Int gridPos = WorldToGrid(worldPosition);
         return blockGrid.ContainsKey(gridPos) ? blockGrid[gridPos] : null;
+    }
+
+    /// <summary>
+    /// Get platform at XZ coordinate (any height)
+    /// Used for platform replacement logic - only one platform per XZ allowed
+    /// </summary>
+    public GameObject GetPlatformAtXZ(float worldX, float worldZ)
+    {
+        int gridX = Mathf.RoundToInt(worldX / gridCellSize);
+        int gridZ = Mathf.RoundToInt(worldZ / gridCellSize);
+
+        foreach (var kvp in blockGrid)
+        {
+            if (kvp.Key.x == gridX && kvp.Key.z == gridZ)
+            {
+                return kvp.Value;
+            }
+        }
+        return null;
     }
 
     private Vector3Int WorldToGrid(Vector3 worldPos)

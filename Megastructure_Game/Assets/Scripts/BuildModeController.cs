@@ -14,12 +14,8 @@ public class BuildModeController : MonoBehaviour
     private GameObject currentSelectedBlock = null;
     private SUPERCharacterAIO playerController;
     private float lastPlacementTime = 0f;
-    private float gridSize = 1.0f; // Block size
 
     [Header("Platform Settings")]
-    public Vector3 platformLocalDimensions = new Vector3(1f, 0.25f, 1f); // X, Y, Z
-    public int thinAxisIndex = 1; // 0=X, 1=Y, 2=Z (Y-axis is thin)
-
     [Tooltip("Scale multiplier for platforms and grid system (1.0 = normal size)")]
     [Range(0.1f, 5.0f)]
     public float platformScale = 1.0f;
@@ -188,55 +184,6 @@ public class BuildModeController : MonoBehaviour
         Debug.Log("BuildModeController: Exited Build Mode");
     }
 
-    /// <summary>
-    /// Gets the world-space direction of the platform's thin axis
-    /// </summary>
-    private Vector3 GetPlatformThinAxis(GameObject platform)
-    {
-        Vector3 localThinAxis = Vector3.zero;
-        localThinAxis[thinAxisIndex] = 1f; // e.g., Vector3.up for Y-axis
-        return platform.transform.rotation * localThinAxis;
-    }
-
-    /// <summary>
-    /// Gets the half-extent of a platform in a given direction
-    /// </summary>
-    private float GetPlatformExtentInDirection(GameObject platform, Vector3 direction)
-    {
-        Vector3 thinAxis = GetPlatformThinAxis(platform);
-        float parallelComponent = Mathf.Abs(Vector3.Dot(direction.normalized, thinAxis.normalized));
-
-        if (parallelComponent > 0.9f) // Parallel to thin axis (within ~25 degrees)
-        {
-            return (platformLocalDimensions[thinAxisIndex] / 2f) * platformScale; // Half of thin dimension (0.125) * scale
-        }
-        else // Perpendicular to thin axis
-        {
-            return 0.5f * platformScale; // (Half of the 1.0 wide dimension) * scale
-        }
-    }
-
-    /// <summary>
-    /// Calculates center-to-center distance for edge-hinged placement
-    /// New platform hinges from the edge of the current platform
-    /// </summary>
-    private float GetPlacementDistance(GameObject currentPlatform, Vector3 placementDirection)
-    {
-        // For edge-hinged placement where platforms share an edge:
-        // Distance = half of current platform's depth + half of new platform's depth
-        // Since both platforms face their placement direction with LookRotation,
-        // the depth is along their local Z axis (1.0 for our 1×0.25×1 platform)
-
-        // Current platform's extent in placement direction (half-depth)
-        float currentExtent = 0.5f; // Half of 1.0 depth
-
-        // New platform's extent (half-depth from its center to hinge edge)
-        float newExtent = 0.5f; // Half of 1.0 depth
-
-        // Total center-to-center distance, scaled
-        return (currentExtent + newExtent) * platformScale; // = 1.0 * scale
-    }
-
     private void PlaceBlockInDirection(KeyCode key)
     {
         if (GameManager.Instance == null) return;
@@ -245,22 +192,72 @@ public class BuildModeController : MonoBehaviour
         Vector3 direction = GameManager.Instance.arrowSystem.GetPlacementDirection(key);
         if (direction == Vector3.zero) return;
 
-        float placementDistance = GetPlacementDistance(currentSelectedBlock, direction);
-        Vector3 newPosition = currentSelectedBlock.transform.position + direction * placementDistance;
+        // Detect if placement is diagonal (both X and Z components present)
+        bool isDiagonal = Mathf.Abs(direction.x) > 0.1f && Mathf.Abs(direction.z) > 0.1f;
 
-        // Round to (0.25 * platformScale) increments for consistent grid alignment
-        float roundingFactor = 4f / platformScale; // Inverse of grid cell size
+        // Calculate base position: 1.0 * platformScale distance in horizontal direction
+        Vector3 horizontalDirection = new Vector3(direction.x, 0, direction.z).normalized;
+        Vector3 newPosition = currentSelectedBlock.transform.position + horizontalDirection * (1.0f * platformScale);
+
+        // Round to 1.0 * platformScale grid increments
+        float gridIncrement = 1.0f * platformScale;
         newPosition = new Vector3(
-            Mathf.Round(newPosition.x * roundingFactor) / roundingFactor,
-            Mathf.Round(newPosition.y * roundingFactor) / roundingFactor,
-            Mathf.Round(newPosition.z * roundingFactor) / roundingFactor
+            Mathf.Round(newPosition.x / gridIncrement) * gridIncrement,
+            currentSelectedBlock.transform.position.y, // Start at same Y level
+            Mathf.Round(newPosition.z / gridIncrement) * gridIncrement
         );
 
-        // Check if position occupied
-        if (GameManager.Instance.adjacencyGrid != null && GameManager.Instance.adjacencyGrid.IsPositionOccupied(newPosition))
+        // If diagonal placement, add +1 height level
+        if (isDiagonal)
         {
-            Debug.Log("BuildModeController: Position already occupied!");
-            return;
+            newPosition.y += gridIncrement; // +1 level
+        }
+
+        // Round Y to integer levels
+        newPosition.y = Mathf.Round(newPosition.y / gridIncrement) * gridIncrement;
+
+        // Check if platform already exists at this XZ coordinate
+        GameObject existingPlatform = null;
+        if (GameManager.Instance.adjacencyGrid != null)
+        {
+            existingPlatform = GameManager.Instance.adjacencyGrid.GetPlatformAtXZ(newPosition.x, newPosition.z);
+        }
+
+        // If platform exists at this XZ, compare heights
+        if (existingPlatform != null)
+        {
+            float existingY = existingPlatform.transform.position.y;
+
+            if (newPosition.y <= existingY)
+            {
+                Debug.Log($"BuildModeController: Cannot place lower platform at same XZ coordinate! Existing Y={existingY}, New Y={newPosition.y}");
+                return;
+            }
+
+            // Destroy existing platform (instant replacement)
+            Debug.Log($"BuildModeController: Replacing lower platform at ({newPosition.x}, {newPosition.z}). Old Y={existingY}, New Y={newPosition.y}");
+
+            // Kill any existing tweens
+            existingPlatform.transform.DOKill();
+
+            // Unregister and destroy old platform
+            if (GameManager.Instance.adjacencyGrid != null)
+            {
+                GameManager.Instance.adjacencyGrid.UnregisterBlock(existingPlatform.transform.position);
+            }
+            if (GameManager.Instance.buildingSystem != null)
+            {
+                GameManager.Instance.buildingSystem.RemoveBlock(existingPlatform);
+            }
+
+            // Destroy scaffolding
+            ScaffoldingManager oldScaffolding = existingPlatform.GetComponent<ScaffoldingManager>();
+            if (oldScaffolding != null)
+            {
+                oldScaffolding.DestroyScaffolding();
+            }
+
+            Destroy(existingPlatform);
         }
 
         // Check block limit
@@ -270,11 +267,10 @@ public class BuildModeController : MonoBehaviour
             return;
         }
 
-        // Rotate platform to face the placement direction (like a wall facing you)
-        // Platform's forward (Z) points toward placement direction, Y stays mostly up
-        Quaternion blockRotation = Quaternion.LookRotation(direction, Vector3.up);
+        // Place new platform with NO ROTATION (always axis-aligned)
+        Quaternion blockRotation = Quaternion.identity;
 
-        // Place new block with rotation and scale
+        // Place new block with scale
         GameObject newBlock = Instantiate(GameManager.Instance.buildingSystem.cubePrefab, newPosition, blockRotation);
 
         // Animate block placement (scale from zero to target scale)
@@ -287,16 +283,20 @@ public class BuildModeController : MonoBehaviour
         // Apply hologram material immediately when instantiating in build mode
         if (GameManager.Instance != null && GameManager.Instance.hologramMaterial != null && isInBuildMode)
         {
-            MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
-            if (renderer != null)
+            // Apply to ALL renderers in children (handles empty container structure)
+            MeshRenderer[] renderers = newBlock.GetComponentsInChildren<MeshRenderer>();
+            foreach (MeshRenderer renderer in renderers)
             {
-                Material[] hologramMaterials = new Material[renderer.materials.Length];
-                for (int i = 0; i < hologramMaterials.Length; i++)
+                if (renderer != null)
                 {
-                    hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
-                    hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
+                    Material[] hologramMaterials = new Material[renderer.materials.Length];
+                    for (int i = 0; i < hologramMaterials.Length; i++)
+                    {
+                        hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
+                        hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
+                    }
+                    renderer.materials = hologramMaterials;
                 }
-                renderer.materials = hologramMaterials;
             }
         }
 
@@ -312,6 +312,13 @@ public class BuildModeController : MonoBehaviour
         // Add to building system's block tracking
         if (GameManager.Instance.buildingSystem != null)
             GameManager.Instance.buildingSystem.AddBlock(newBlock);
+
+        // Generate scaffolding for this platform
+        ScaffoldingManager scaffoldingManager = newBlock.AddComponent<ScaffoldingManager>();
+        GameObject scaffoldPrefab = GameManager.Instance.buildingSystem.scaffoldingPrefab != null
+            ? GameManager.Instance.buildingSystem.scaffoldingPrefab
+            : GameManager.Instance.buildingSystem.cubePrefab;
+        scaffoldingManager.Initialize(newBlock, scaffoldPrefab, platformScale, 0f);
 
         // Select this block and update camera/arrows
         SelectBlock(newBlock);
@@ -367,23 +374,39 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance == null || GameManager.Instance.hologramMaterial == null || block == null)
             return;
 
-        MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null)
+        // Apply hologram material to ALL renderers in platform children (handles empty container structure)
+        MeshRenderer[] renderers = block.GetComponentsInChildren<MeshRenderer>();
+        if (renderers != null && renderers.Length > 0)
         {
-            // Save original materials if not already saved
+            // Save original materials if not already saved (only save first renderer for reference)
             if (!originalMaterials.ContainsKey(block))
             {
-                originalMaterials[block] = renderer.materials;
+                originalMaterials[block] = renderers[0].materials;
             }
 
-            // Apply hologram material to all material slots with build mode color
-            Material[] hologramMaterials = new Material[renderer.materials.Length];
-            for (int i = 0; i < hologramMaterials.Length; i++)
+            // Apply hologram material to ALL children with renderers
+            foreach (MeshRenderer renderer in renderers)
             {
-                hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
-                hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
+                if (renderer != null)
+                {
+                    Material[] hologramMaterials = new Material[renderer.materials.Length];
+                    for (int i = 0; i < hologramMaterials.Length; i++)
+                    {
+                        hologramMaterials[i] = new Material(GameManager.Instance.hologramMaterial);
+                        hologramMaterials[i].SetColor("_Color", GameManager.Instance.buildModeColor);
+                    }
+                    renderer.materials = hologramMaterials;
+                }
             }
-            renderer.materials = hologramMaterials;
+
+            // Update scaffolding materials
+            ScaffoldingManager scaffolding = block.GetComponent<ScaffoldingManager>();
+            if (scaffolding != null)
+            {
+                Material hologramMat = new Material(GameManager.Instance.hologramMaterial);
+                hologramMat.SetColor("_Color", GameManager.Instance.buildModeColor);
+                scaffolding.UpdateMaterial(hologramMat);
+            }
         }
     }
 
@@ -395,14 +418,29 @@ public class BuildModeController : MonoBehaviour
         foreach (var kvp in originalMaterials)
         {
             GameObject block = kvp.Key;
-            Material[] materials = kvp.Value;
+            Material[] savedMaterials = kvp.Value;
 
             if (block != null)
             {
-                MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-                if (renderer != null)
+                // Restore materials to ALL renderers in children (handles empty container structure)
+                MeshRenderer[] renderers = block.GetComponentsInChildren<MeshRenderer>();
+                if (renderers != null && renderers.Length > 0)
                 {
-                    renderer.materials = materials;
+                    // Restore original material to all children
+                    foreach (MeshRenderer renderer in renderers)
+                    {
+                        if (renderer != null && savedMaterials.Length > 0)
+                        {
+                            renderer.materials = savedMaterials;
+                        }
+                    }
+
+                    // Restore scaffolding materials
+                    ScaffoldingManager scaffolding = block.GetComponent<ScaffoldingManager>();
+                    if (scaffolding != null && savedMaterials.Length > 0)
+                    {
+                        scaffolding.UpdateMaterial(savedMaterials[0]);
+                    }
                 }
             }
         }

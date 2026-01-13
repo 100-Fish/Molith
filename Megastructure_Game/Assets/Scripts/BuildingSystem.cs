@@ -9,6 +9,9 @@ public class BuildingSystem : MonoBehaviour
     [Tooltip("The cube prefab to place")]
     public GameObject cubePrefab;
 
+    [Tooltip("The scaffolding cube prefab (supports platforms)")]
+    public GameObject scaffoldingPrefab;
+
     [Header("Placement Settings")]
     [Tooltip("Distance from camera to place blocks")]
     public float placementDistance = 5f;
@@ -205,23 +208,36 @@ public class BuildingSystem : MonoBehaviour
             // Safety check - block might have been destroyed
             if (block != null && placedBlocks.Contains(block))
             {
-                // Apply destruction material
-                MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-                if (renderer != null)
+                // Apply destruction material to ALL renderers in platform children
+                MeshRenderer[] renderers = block.GetComponentsInChildren<MeshRenderer>();
+                if (renderers != null && renderers.Length > 0)
                 {
-                    // Store original materials if not already stored
+                    // Store original materials if not already stored (only save first for reference)
                     if (!originalMaterials.ContainsKey(block))
                     {
-                        originalMaterials[block] = renderer.materials;
+                        originalMaterials[block] = renderers[0].materials;
                     }
 
-                    // Apply destruction material to all submeshes
-                    Material[] destructionMaterials = new Material[renderer.materials.Length];
-                    for (int i = 0; i < destructionMaterials.Length; i++)
+                    // Apply destruction material to ALL children with renderers
+                    foreach (MeshRenderer renderer in renderers)
                     {
-                        destructionMaterials[i] = destructionMaterialInstance;
+                        if (renderer != null)
+                        {
+                            Material[] destructionMaterials = new Material[renderer.materials.Length];
+                            for (int i = 0; i < destructionMaterials.Length; i++)
+                            {
+                                destructionMaterials[i] = destructionMaterialInstance;
+                            }
+                            renderer.materials = destructionMaterials;
+                        }
                     }
-                    renderer.materials = destructionMaterials;
+
+                    // Apply destruction material to scaffolding
+                    ScaffoldingManager scaffolding = block.GetComponent<ScaffoldingManager>();
+                    if (scaffolding != null)
+                    {
+                        scaffolding.UpdateMaterial(destructionMaterialInstance);
+                    }
                 }
 
                 // Add to highlighted list
@@ -265,6 +281,13 @@ public class BuildingSystem : MonoBehaviour
             if (originalMaterials.ContainsKey(block))
             {
                 originalMaterials.Remove(block);
+            }
+
+            // Destroy scaffolding
+            ScaffoldingManager scaffolding = block.GetComponent<ScaffoldingManager>();
+            if (scaffolding != null)
+            {
+                scaffolding.DestroyScaffolding();
             }
 
             // Capture reference for closure
@@ -321,21 +344,32 @@ public class BuildingSystem : MonoBehaviour
 
         currentPreview = Instantiate(cubePrefab);
 
-        Collider previewCollider = currentPreview.GetComponentInChildren<Collider>();
-        if (previewCollider != null)
+        // Disable colliders on preview
+        Collider[] previewColliders = currentPreview.GetComponentsInChildren<Collider>();
+        foreach (Collider collider in previewColliders)
         {
-            previewCollider.enabled = false;
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
         }
 
-        MeshRenderer renderer = currentPreview.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null && previewMaterialInstance != null)
+        // Apply preview material to ALL renderers in children (handles empty container structure)
+        if (previewMaterialInstance != null)
         {
-            Material[] previewMaterials = new Material[renderer.materials.Length];
-            for (int i = 0; i < previewMaterials.Length; i++)
+            MeshRenderer[] renderers = currentPreview.GetComponentsInChildren<MeshRenderer>();
+            foreach (MeshRenderer renderer in renderers)
             {
-                previewMaterials[i] = previewMaterialInstance;
+                if (renderer != null)
+                {
+                    Material[] previewMaterials = new Material[renderer.materials.Length];
+                    for (int i = 0; i < previewMaterials.Length; i++)
+                    {
+                        previewMaterials[i] = previewMaterialInstance;
+                    }
+                    renderer.materials = previewMaterials;
+                }
             }
-            renderer.materials = previewMaterials;
         }
 
         // Get platform scale from BuildModeController
@@ -365,11 +399,25 @@ public class BuildingSystem : MonoBehaviour
     {
         if (originalMaterials.ContainsKey(block))
         {
-            MeshRenderer renderer = block.GetComponentInChildren<MeshRenderer>();
-            if (renderer != null)
+            Material[] savedMaterials = originalMaterials[block];
+
+            // Restore materials to ALL renderers in children
+            MeshRenderer[] renderers = block.GetComponentsInChildren<MeshRenderer>();
+            foreach (MeshRenderer renderer in renderers)
             {
-                renderer.materials = originalMaterials[block];
+                if (renderer != null && savedMaterials.Length > 0)
+                {
+                    renderer.materials = savedMaterials;
+                }
             }
+
+            // Restore scaffolding materials
+            ScaffoldingManager scaffolding = block.GetComponent<ScaffoldingManager>();
+            if (scaffolding != null && savedMaterials.Length > 0)
+            {
+                scaffolding.UpdateMaterial(savedMaterials[0]);
+            }
+
             originalMaterials.Remove(block);
         }
     }
@@ -395,12 +443,12 @@ public class BuildingSystem : MonoBehaviour
             platformScale = GameManager.Instance.buildModeController.platformScale;
         }
 
-        // Round position to (0.25 * platformScale) increments
-        float roundingFactor = 4f / platformScale;
+        // Round position to (1.0 * platformScale) increments
+        float gridIncrement = 1.0f * platformScale;
         Vector3 roundedPosition = new Vector3(
-            Mathf.Round(previewPosition.x * roundingFactor) / roundingFactor,
-            Mathf.Round(previewPosition.y * roundingFactor) / roundingFactor,
-            Mathf.Round(previewPosition.z * roundingFactor) / roundingFactor
+            Mathf.Round(previewPosition.x / gridIncrement) * gridIncrement,
+            Mathf.Round(previewPosition.y / gridIncrement) * gridIncrement,
+            Mathf.Round(previewPosition.z / gridIncrement) * gridIncrement
         );
 
         // Keep scale at 1.0 (constant size)
@@ -416,13 +464,18 @@ public class BuildingSystem : MonoBehaviour
             blockCollider.enabled = true;
         }
 
-        MeshRenderer renderer = newBlock.GetComponentInChildren<MeshRenderer>();
-        if (renderer != null)
+        // Apply materials to ALL renderers in children (handles empty container with 2 children: top + bottom)
+        MeshRenderer[] renderers = newBlock.GetComponentsInChildren<MeshRenderer>();
+        MeshRenderer[] prefabRenderers = cubePrefab.GetComponentsInChildren<MeshRenderer>();
+
+        if (renderers != null && prefabRenderers != null && renderers.Length == prefabRenderers.Length)
         {
-            MeshRenderer prefabRenderer = cubePrefab.GetComponentInChildren<MeshRenderer>();
-            if (prefabRenderer != null)
+            for (int i = 0; i < renderers.Length; i++)
             {
-                renderer.materials = prefabRenderer.sharedMaterials;
+                if (renderers[i] != null && prefabRenderers[i] != null)
+                {
+                    renderers[i].materials = prefabRenderers[i].sharedMaterials;
+                }
             }
         }
 
@@ -445,7 +498,13 @@ public class BuildingSystem : MonoBehaviour
             GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, roundedPosition);
         }
 
-        // Trigger build mode after placing first block
+        // Generate scaffolding for this platform BEFORE entering build mode
+        // This ensures scaffolding is ready when hologram materials are applied
+        ScaffoldingManager scaffoldingManager = newBlock.AddComponent<ScaffoldingManager>();
+        GameObject scaffoldPrefab = scaffoldingPrefab != null ? scaffoldingPrefab : cubePrefab;
+        scaffoldingManager.Initialize(newBlock, scaffoldPrefab, platformScale, 0f);
+
+        // Trigger build mode after placing first block (and after scaffolding is created)
         if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
         {
             GameManager.Instance.buildModeController.EnterBuildMode(newBlock);
@@ -516,6 +575,13 @@ public class BuildingSystem : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.adjacencyGrid != null)
         {
             GameManager.Instance.adjacencyGrid.UnregisterBlock(block.transform.position);
+        }
+
+        // Destroy scaffolding
+        ScaffoldingManager scaffolding = block.GetComponent<ScaffoldingManager>();
+        if (scaffolding != null)
+        {
+            scaffolding.DestroyScaffolding();
         }
 
         if (originalMaterials.ContainsKey(block))
