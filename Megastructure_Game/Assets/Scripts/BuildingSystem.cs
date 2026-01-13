@@ -651,7 +651,8 @@ public class BuildingSystem : MonoBehaviour
         // Lerp the endpoint to the new target position
         lineEndpointTween = DOTween.To(
             () => currentLineEndpoint,
-            x => {
+            x =>
+            {
                 currentLineEndpoint = x;
                 DrawParabola(startPos, currentLineEndpoint, false);
             },
