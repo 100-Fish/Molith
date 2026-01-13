@@ -219,6 +219,12 @@ namespace SUPERCharacter
         bool ignoreStamina = false;
         #endregion
 
+        #region CUSTOM: Falling Sound System
+        // CUSTOM: Falling sound tracking
+        private bool isFallingSound = false;
+        private float fallingThreshold = -5f; // Velocity threshold to trigger falling sound
+        #endregion
+
         #region Footstep System
         [Header("Footstep System")]
         public bool enableFootstepSounds = true;
@@ -1026,6 +1032,15 @@ namespace SUPERCharacter
                 }
             }
 
+            // CUSTOM: Falling sound detection
+            if (!currentGroundInfo.isGettingGroundInfo && p_Rigidbody.velocity.y < fallingThreshold)
+            {
+                if (!isFallingSound)
+                {
+                    isFallingSound = true;
+                    AudioEventDispatcher.PlayLoopingSound(SoundID.Falling);
+                }
+            }
 
         }
         void Jump(float Force)
@@ -1038,6 +1053,7 @@ namespace SUPERCharacter
             {
 
                 Jumped = true;
+                AudioEventDispatcher.PlaySound(SoundID.Jump); // CUSTOM: Jump sound
                 p_Rigidbody.velocity = (Vector3.right * p_Rigidbody.velocity.x) + (Vector3.forward * p_Rigidbody.velocity.z);
                 p_Rigidbody.AddForce(Vector3.up * (Force / 10), ForceMode.Impulse);
                 if (enableStaminaSystem && jumpingDepletesStamina)
@@ -1055,6 +1071,7 @@ namespace SUPERCharacter
                 (currentStance == Stances.Standing))
             {
                 Jumped = true;
+                AudioEventDispatcher.PlaySound(SoundID.Jump); // CUSTOM: Jump sound
                 p_Rigidbody.velocity = (Vector3.right * p_Rigidbody.velocity.x) + (Vector3.forward * p_Rigidbody.velocity.z);
                 p_Rigidbody.AddForce(Vector3.up * (Force / 10), ForceMode.Impulse);
                 if (enableStaminaSystem && jumpingDepletesStamina)
@@ -1138,6 +1155,14 @@ namespace SUPERCharacter
             if (Jumped && (Physics.Raycast(transform.position, Vector3.down, (capsule.height / 2) + 0.1f, whatIsGround) || Physics.CheckSphere(transform.position - (Vector3.up * ((capsule.height / 2) - (capsule.radius - 0.05f))), capsule.radius, whatIsGround)) && Time.time > (jumpBlankingPeriod + 0.1f))
             {
                 Jumped = false;
+
+                // CUSTOM: Stop falling sound and play landing sound
+                if (isFallingSound)
+                {
+                    isFallingSound = false;
+                    AudioEventDispatcher.StopLoopingSound(SoundID.Falling);
+                    AudioEventDispatcher.PlaySound(SoundID.Landing);
+                }
             }
 
             //if(Result.isGrounded){

@@ -280,7 +280,9 @@ public class BuildModeController : MonoBehaviour
         // Animate block placement (scale from zero to target scale)
         Vector3 targetScale = Vector3.one * platformScale;
         newBlock.transform.localScale = Vector3.zero;
-        newBlock.transform.DOScale(targetScale, 0.15f).SetEase(Ease.OutBack, 1.2f);
+        newBlock.transform.DOScale(targetScale, 0.15f)
+            .SetEase(Ease.OutBack, 1.2f)
+            .OnStart(() => AudioEventDispatcher.PlaySound(SoundID.BlockPlace));
 
         // Apply hologram material immediately when instantiating in build mode
         if (GameManager.Instance != null && GameManager.Instance.hologramMaterial != null && isInBuildMode)
