@@ -5,7 +5,7 @@ using UnityEngine;
 public class WorldGenerator : MonoBehaviour
 {
     [Header("Generation Settings")]
-    [SerializeField] private GameObject structurePrefab;
+    [SerializeField] private List<GameObject> structurePrefabs = new();
     [SerializeField] private int numberOfCircles = 3;
     [SerializeField] private float baseRadius = 20f;
     [SerializeField] private float radiusExponent = 1.8f;
@@ -331,7 +331,7 @@ public class WorldGenerator : MonoBehaviour
 
     private void SpawnStructuresInEditor()
     {
-        if (structurePrefab == null) return;
+        if (structurePrefabs.Count == 0) return;
 
         for (int i = 0; i < generatedPositions.Count; i++)
         {
@@ -341,12 +341,12 @@ public class WorldGenerator : MonoBehaviour
             float randomScale = Random.Range(0.25f, 2f) * scale;
 
 #if UNITY_EDITOR
-            GameObject structure = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(structurePrefab, transform);
+            GameObject structure = (GameObject)UnityEditor.PrefabUtility.InstantiatePrefab(structurePrefabs[Random.Range(0, structurePrefabs.Count)], transform);
             structure.transform.position = position;
             structure.transform.rotation = Random.rotation;
             structure.transform.localScale = randomScale * Vector3.one;
 #else
-            GameObject structure = Instantiate(structurePrefab, position, Random.rotation, transform);
+            GameObject structure = Instantiate(structurePrefabs[Random.Range(0, structurePrefabs.Count)], position, Random.rotation, transform);
             structure.transform.localScale = randomScale * Vector3.one;
 #endif
 
