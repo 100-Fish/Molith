@@ -83,10 +83,10 @@ public class BuildModeController : MonoBehaviour
             GameManager.Instance.arrowSystem.UpdateArrowPositions(currentSelectedBlock, playerController.playerCamera);
         }
 
-        // Update line to current selected block
+        // Update chain lines
         if (currentSelectedBlock != null && GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
         {
-            GameManager.Instance.buildingSystem.UpdateLineToBlock(currentSelectedBlock);
+            GameManager.Instance.buildingSystem.UpdateChainLines();
         }
 
         // Exit build mode
@@ -183,6 +183,12 @@ public class BuildModeController : MonoBehaviour
         // Apply hologram materials to all placed blocks
         ApplyHologramMaterialsToAllBlocks();
 
+        // Initialize chain line system
+        if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.InitializeChainLine(firstBlock);
+        }
+
         Debug.Log("BuildModeController: Entered Build Mode - Press SPACE to exit, WASD to place blocks");
     }
 
@@ -208,10 +214,10 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
             GameManager.Instance.arrowSystem.HideArrows();
 
-        // Hide the raycast line
+        // Clear chain lines
         if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
         {
-            GameManager.Instance.buildingSystem.HideRaycastLine();
+            GameManager.Instance.buildingSystem.ClearChainLines();
         }
 
         // Restore original materials to all blocks
@@ -244,6 +250,30 @@ public class BuildModeController : MonoBehaviour
         );
 
         Debug.Log($"BuildModeController: Placing block at Y={newPosition.y} (locked level)");
+
+        // If block would be below ground level, try placing one level higher
+        if (GameManager.Instance != null && GameManager.Instance.worldGenerator != null)
+        {
+            float groundHeight = GameManager.Instance.worldGenerator.GetGroundHeight(newPosition.x, newPosition.z);
+            if (newPosition.y < groundHeight)
+            {
+                // Try one grid level higher
+                float adjustedY = newPosition.y + gridIncrement;
+                Debug.Log($"BuildModeController: Block Y={newPosition.y} below ground ({groundHeight}), trying Y={adjustedY}");
+
+                // Check if adjusted position is above ground
+                if (adjustedY >= groundHeight)
+                {
+                    newPosition.y = adjustedY;
+                }
+                else
+                {
+                    // Still below ground, cannot place
+                    Debug.Log($"BuildModeController: Cannot place block - still below ground after adjustment");
+                    return;
+                }
+            }
+        }
 
         // Check if platform already exists at this XZ coordinate
         GameObject existingPlatform = null;
@@ -349,8 +379,18 @@ public class BuildModeController : MonoBehaviour
             : GameManager.Instance.buildingSystem.cubePrefab;
         scaffoldingManager.Initialize(newBlock, scaffoldPrefab, platformScale, 0f);
 
+        // Capture previous block for chain line before selecting new block
+        GameObject previousBlock = currentSelectedBlock;
+
         // Select this block and update camera/arrows
         SelectBlock(newBlock);
+
+        // Add chain line segment from previous block to new block
+        if (GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.AddChainSegment(previousBlock, newBlock);
+        }
+
         lastPlacementTime = Time.time;
     }
 

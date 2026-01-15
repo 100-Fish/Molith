@@ -55,9 +55,17 @@ public class ScaffoldingManager : MonoBehaviour
 
         Vector3 platformPos = parentPlatform.transform.position;
         int platformYLevel = Mathf.RoundToInt(platformPos.y / platformScale);
-        int groundYLevel = Mathf.RoundToInt(groundLevel / platformScale);
 
-        Debug.Log($"ScaffoldingManager: Platform at {platformPos}, Y level={platformYLevel}, Ground level={groundYLevel}, Scale={platformScale}");
+        // Query actual terrain height at this XZ position
+        float actualGroundHeight = groundLevel; // Fallback to passed-in value
+        if (GameManager.Instance != null && GameManager.Instance.worldGenerator != null)
+        {
+            actualGroundHeight = GameManager.Instance.worldGenerator.GetGroundHeight(platformPos.x, platformPos.z);
+        }
+
+        int groundYLevel = Mathf.RoundToInt(actualGroundHeight / platformScale);
+
+        Debug.Log($"ScaffoldingManager: Platform at {platformPos}, Y level={platformYLevel}, Dynamic ground level={groundYLevel} (height={actualGroundHeight}), Scale={platformScale}");
         Debug.Log($"ScaffoldingManager: Will generate {platformYLevel - groundYLevel} scaffolding cubes (from Y={groundYLevel} to Y={platformYLevel - 1})");
 
         // Generate scaffolding from ground up to (but not including) platform level
