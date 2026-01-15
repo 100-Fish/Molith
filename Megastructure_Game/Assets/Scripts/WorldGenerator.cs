@@ -438,6 +438,16 @@ public class WorldGenerator : MonoBehaviour
         return total / maxValue;
     }
 
+    /// <summary>
+    /// Gets the terrain height at a given world X,Z coordinate.
+    /// This recalculates the Perlin noise used during terrain generation.
+    /// </summary>
+    public float GetGroundHeight(float worldX, float worldZ)
+    {
+        float noiseValue = GenerateFractalNoise(worldX, worldZ);
+        return noiseValue * noiseStrength;
+    }
+
     private void GenerateStructurePositions()
     {
         generatedPositions.Clear();

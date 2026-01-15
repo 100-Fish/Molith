@@ -86,6 +86,14 @@ public class BuildingSystem : MonoBehaviour
     private Coroutine highlightCoroutine = null;
     private float currentHighlightDelay;
 
+    // Chain line system for build mode
+    private readonly List<LineRenderer> chainLineRenderers = new();
+    private readonly List<GameObject> chainBlockOrder = new();
+    private LineRenderer activeChainSegment = null;
+    private Vector3 activeSegmentStartPos;
+    private Vector3 activeSegmentEndpoint;
+    private Tweener activeSegmentTween;
+
     [Header("FIFO Destruction Settings")]
     [Tooltip("Initial delay before first block starts highlighting (seconds)")]
     public float initialHighlightDelay = 0.5f;
@@ -822,6 +830,7 @@ public class BuildingSystem : MonoBehaviour
             Debug.Log($"Cannot place block: Maximum block limit ({maxBlocks}) reached!");
             Destroy(currentPreview);
             currentPreview = null;
+            HideRaycastLine();
             return;
         }
 
@@ -839,6 +848,32 @@ public class BuildingSystem : MonoBehaviour
             Mathf.Round(previewPosition.y / gridIncrement) * gridIncrement,
             Mathf.Round(previewPosition.z / gridIncrement) * gridIncrement
         );
+
+        // If block would be below ground level, try placing one level higher
+        if (GameManager.Instance != null && GameManager.Instance.worldGenerator != null)
+        {
+            float groundHeight = GameManager.Instance.worldGenerator.GetGroundHeight(roundedPosition.x, roundedPosition.z);
+            if (roundedPosition.y < groundHeight)
+            {
+                // Try one grid level higher
+                float adjustedY = roundedPosition.y + gridIncrement;
+                Debug.Log($"BuildingSystem: Block Y={roundedPosition.y} below ground ({groundHeight}), trying Y={adjustedY}");
+
+                if (adjustedY >= groundHeight)
+                {
+                    roundedPosition.y = adjustedY;
+                }
+                else
+                {
+                    // Still below ground, cannot place
+                    Debug.Log($"BuildingSystem: Cannot place block - still below ground after adjustment");
+                    Destroy(currentPreview);
+                    currentPreview = null;
+                    HideRaycastLine();
+                    return;
+                }
+            }
+        }
 
         // Keep scale at 1.0 (constant size)
         float roundedScale = 1.0f;
@@ -1002,6 +1037,250 @@ public class BuildingSystem : MonoBehaviour
         }
     }
 
+    #region Chain Line System
+
+    /// <summary>
+    /// Initializes the chain line system when entering build mode
+    /// </summary>
+    public void InitializeChainLine(GameObject firstBlock)
+    {
+        // Clear any existing chain
+        ClearChainLines();
+
+        if (firstBlock == null || playerBackpack == null)
+            return;
+
+        // Add the first block to the chain
+        chainBlockOrder.Add(firstBlock);
+
+        // Create the first segment from backpack to first block (animated)
+        CreateAnimatedChainSegment(null, firstBlock);
+    }
+
+    /// <summary>
+    /// Adds a new segment to the chain when a block is placed
+    /// </summary>
+    public void AddChainSegment(GameObject previousBlock, GameObject newBlock)
+    {
+        if (previousBlock == null || newBlock == null || playerBackpack == null)
+            return;
+
+        // Finalize the active animating segment (make it static)
+        FinalizeActiveSegment();
+
+        // Add new block to chain order
+        chainBlockOrder.Add(newBlock);
+
+        // Create new animating segment from previous block to new block
+        CreateAnimatedChainSegment(previousBlock, newBlock);
+    }
+
+    /// <summary>
+    /// Finalizes the currently animating segment (makes it static)
+    /// </summary>
+    private void FinalizeActiveSegment()
+    {
+        if (activeChainSegment != null)
+        {
+            // Kill the tween if still active
+            if (activeSegmentTween != null)
+            {
+                activeSegmentTween.Kill();
+                activeSegmentTween = null;
+            }
+
+            // Add to the static chain list
+            chainLineRenderers.Add(activeChainSegment);
+            activeChainSegment = null;
+        }
+    }
+
+    /// <summary>
+    /// Creates an animated chain segment between two points
+    /// </summary>
+    private void CreateAnimatedChainSegment(GameObject fromBlock, GameObject toBlock)
+    {
+        if (playerBackpack == null || toBlock == null)
+            return;
+
+        // Determine start position
+        Vector3 startPos;
+        if (fromBlock == null)
+        {
+            // First segment starts from backpack
+            startPos = playerBackpack.position;
+        }
+        else
+        {
+            // Subsequent segments start from top of previous block
+            startPos = fromBlock.transform.position;
+            startPos.y += fromBlock.transform.localScale.y * 0.5f;
+        }
+
+        // Target end position (top of target block)
+        Vector3 targetEndPos = toBlock.transform.position;
+        targetEndPos.y += toBlock.transform.localScale.y * 0.5f;
+
+        // Create new LineRenderer
+        activeChainSegment = CreateChainLineRenderer($"ChainSegment_{chainBlockOrder.Count}");
+        activeChainSegment.enabled = true;
+
+        // Set color from GameManager
+        Color lineColor = GameManager.Instance != null ? GameManager.Instance.placementColor : Color.cyan;
+        activeChainSegment.startColor = lineColor;
+        activeChainSegment.endColor = lineColor;
+
+        // Store the fixed start position for this segment
+        activeSegmentStartPos = startPos;
+
+        // Start endpoint at the start position (will animate to target)
+        activeSegmentEndpoint = startPos;
+
+        // Kill any existing tween
+        if (activeSegmentTween != null)
+        {
+            activeSegmentTween.Kill();
+        }
+
+        // Animate the endpoint to the target
+        activeSegmentTween = DOTween.To(
+            () => activeSegmentEndpoint,
+            x =>
+            {
+                activeSegmentEndpoint = x;
+                DrawParabolaForRenderer(activeChainSegment, activeSegmentStartPos, activeSegmentEndpoint, false);
+            },
+            targetEndPos,
+            lineTransitionDuration
+        ).SetEase(Ease.OutCubic);
+    }
+
+    /// <summary>
+    /// Creates a LineRenderer for a chain segment
+    /// </summary>
+    private LineRenderer CreateChainLineRenderer(string name)
+    {
+        GameObject lineObj;
+        LineRenderer lineRenderer;
+
+        if (raycastLinePrefab != null)
+        {
+            lineObj = Instantiate(raycastLinePrefab, transform);
+            lineObj.name = name;
+            lineRenderer = lineObj.GetComponent<LineRenderer>();
+
+            if (lineRenderer == null)
+            {
+                lineRenderer = lineObj.AddComponent<LineRenderer>();
+            }
+        }
+        else
+        {
+            lineObj = new GameObject(name);
+            lineObj.transform.SetParent(transform);
+            lineRenderer = lineObj.AddComponent<LineRenderer>();
+
+            // Configure LineRenderer
+            lineRenderer.startWidth = raycastLineWidth;
+            lineRenderer.endWidth = raycastLineWidth;
+            lineRenderer.material = new Material(Shader.Find("Sprites/Default"));
+        }
+
+        lineRenderer.positionCount = parabolaSegments + 1;
+        return lineRenderer;
+    }
+
+    /// <summary>
+    /// Updates all chain line segments (called every frame in build mode)
+    /// </summary>
+    public void UpdateChainLines()
+    {
+        if (playerBackpack == null || chainBlockOrder.Count == 0)
+            return;
+
+        // Update static segments - first segment starts from backpack
+        Vector3 currentStart = playerBackpack.position;
+
+        for (int i = 0; i < chainLineRenderers.Count && i < chainBlockOrder.Count; i++)
+        {
+            LineRenderer lr = chainLineRenderers[i];
+            GameObject block = chainBlockOrder[i];
+
+            if (lr == null || block == null)
+                continue;
+
+            // Determine end position (top of block)
+            Vector3 endPos = block.transform.position;
+            endPos.y += block.transform.localScale.y * 0.5f;
+
+            // Redraw the segment
+            DrawParabolaForRenderer(lr, currentStart, endPos, false);
+
+            // Next segment starts from this block's top
+            currentStart = endPos;
+        }
+
+        // Update the active segment's start position if it exists
+        // (the animation handles the endpoint, but start may need updating if previous block moved)
+        if (activeChainSegment != null && chainBlockOrder.Count > 0)
+        {
+            // For the active segment, recalculate start position
+            if (chainBlockOrder.Count == 1)
+            {
+                // First segment starts from backpack
+                activeSegmentStartPos = playerBackpack.position;
+            }
+            else if (chainBlockOrder.Count > chainLineRenderers.Count)
+            {
+                // Active segment starts from the last finalized block
+                GameObject prevBlock = chainBlockOrder[chainBlockOrder.Count - 2];
+                if (prevBlock != null)
+                {
+                    activeSegmentStartPos = prevBlock.transform.position;
+                    activeSegmentStartPos.y += prevBlock.transform.localScale.y * 0.5f;
+                }
+            }
+
+            // Redraw the active segment with updated start
+            DrawParabolaForRenderer(activeChainSegment, activeSegmentStartPos, activeSegmentEndpoint, false);
+        }
+    }
+
+    /// <summary>
+    /// Clears all chain line renderers
+    /// </summary>
+    public void ClearChainLines()
+    {
+        // Kill active tween
+        if (activeSegmentTween != null)
+        {
+            activeSegmentTween.Kill();
+            activeSegmentTween = null;
+        }
+
+        // Destroy active segment
+        if (activeChainSegment != null)
+        {
+            Destroy(activeChainSegment.gameObject);
+            activeChainSegment = null;
+        }
+
+        // Destroy all static chain segments
+        foreach (LineRenderer lr in chainLineRenderers)
+        {
+            if (lr != null)
+            {
+                Destroy(lr.gameObject);
+            }
+        }
+        chainLineRenderers.Clear();
+
+        // Clear block order
+        chainBlockOrder.Clear();
+    }
+
+    #endregion
+
     void OnDestroy()
     {
         // Stop any running coroutines
@@ -1020,5 +1299,8 @@ public class BuildingSystem : MonoBehaviour
         // Clean up LineRenderer
         if (raycastLineRenderer != null)
             Destroy(raycastLineRenderer.gameObject);
+
+        // Clean up chain lines
+        ClearChainLines();
     }
 }

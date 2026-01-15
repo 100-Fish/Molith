@@ -47,6 +47,9 @@ public class GameManager : MonoBehaviour
     [Tooltip("Reference to the CameraManager")]
     public CameraManager cameraManager;
 
+    [Tooltip("Reference to the WorldGenerator")]
+    public WorldGenerator worldGenerator;
+
     [Header("Materials")]
     [Tooltip("Hologram material (should use FX/Hologram shader)")]
     public Material hologramMaterial;
@@ -130,6 +133,12 @@ public class GameManager : MonoBehaviour
         {
             Debug.LogWarning("GameManager: CameraManager reference is missing. Attempting to find it...");
             cameraManager = FindObjectOfType<CameraManager>();
+        }
+
+        if (worldGenerator == null)
+        {
+            Debug.LogWarning("GameManager: WorldGenerator reference is missing. Attempting to find it...");
+            worldGenerator = FindObjectOfType<WorldGenerator>();
         }
 
         // Error logging for critical systems
