@@ -240,6 +240,12 @@ public class BuildingSystem : MonoBehaviour
                 }
                 return;
             }
+
+            // Also check if already in destruction mode (handled by BuildModeController)
+            if (GameManager.Instance.buildModeController.IsInDestructionMode)
+            {
+                return; // Input is handled by BuildModeController.Update()
+            }
         }
 
         if (isPlacementMode)
@@ -262,28 +268,59 @@ public class BuildingSystem : MonoBehaviour
             highlightCoroutine = StartCoroutine(HighlightBlocksSequentially());
         }
 
-        // Key released - trigger destruction
+        // Key released - trigger destruction (only if not in orbit mode yet, or if orbit mode handles it)
         if (Input.GetKeyUp(destroyKey) && isDestructionMode)
         {
-            isDestructionMode = false;
-
-            // Stop highlighting
-            if (highlightCoroutine != null)
-            {
-                StopCoroutine(highlightCoroutine);
-                highlightCoroutine = null;
-            }
-
-            // Hide the line when releasing destroy key
-            HideRaycastLine();
-
-            // If no blocks highlighted (quick release), do nothing
-            if (highlightedBlocks.Count == 0)
-                return;
-
-            // Trigger destruction sequence
-            StartCoroutine(DestroyBlocksSequentially());
+            ConfirmAndTriggerDestruction();
         }
+    }
+
+    /// <summary>
+    /// Called when Q is released to confirm destruction
+    /// </summary>
+    private void ConfirmAndTriggerDestruction()
+    {
+        isDestructionMode = false;
+
+        // Stop highlighting
+        if (highlightCoroutine != null)
+        {
+            StopCoroutine(highlightCoroutine);
+            highlightCoroutine = null;
+        }
+
+        // Hide the line when releasing destroy key
+        HideRaycastLine();
+
+        // If no blocks highlighted (quick release), just exit destruction mode
+        if (highlightedBlocks.Count == 0)
+        {
+            // Tell BuildModeController to exit destruction mode if it was entered
+            if (GameManager.Instance != null && GameManager.Instance.buildModeController != null &&
+                GameManager.Instance.buildModeController.IsInDestructionMode)
+            {
+                GameManager.Instance.buildModeController.ConfirmDestruction();
+            }
+            return;
+        }
+
+        // Tell BuildModeController to exit destruction orbit mode
+        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null &&
+            GameManager.Instance.buildModeController.IsInDestructionMode)
+        {
+            GameManager.Instance.buildModeController.ConfirmDestruction();
+        }
+
+        // Trigger destruction sequence
+        StartCoroutine(DestroyBlocksSequentially());
+    }
+
+    /// <summary>
+    /// Called by BuildModeController when Q is released during destruction orbit mode
+    /// </summary>
+    public void OnDestructionConfirmed()
+    {
+        ConfirmAndTriggerDestruction();
     }
 
     IEnumerator HighlightBlocksSequentially()
@@ -292,6 +329,7 @@ public class BuildingSystem : MonoBehaviour
         yield return new WaitForSeconds(currentHighlightDelay);
 
         int blockIndex = 0;
+        bool enteredOrbitMode = false;
 
         while (isDestructionMode && blockIndex < fifoBlockList.Count)
         {
@@ -340,6 +378,22 @@ public class BuildingSystem : MonoBehaviour
 
                 // Update main line to point at this block in destroy mode
                 UpdateLineToBlock(block, true);
+
+                // Enter orbit mode on first block, update orbit target on subsequent blocks
+                if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+                {
+                    if (!enteredOrbitMode)
+                    {
+                        // Enter destruction orbit mode with camera following this block
+                        GameManager.Instance.buildModeController.EnterDestructionMode(block);
+                        enteredOrbitMode = true;
+                    }
+                    else
+                    {
+                        // Update orbit target to the latest highlighted block
+                        GameManager.Instance.buildModeController.UpdateOrbitTarget(block);
+                    }
+                }
             }
 
             blockIndex++;
@@ -425,7 +479,7 @@ public class BuildingSystem : MonoBehaviour
         highlightedBlocks.Clear();
     }
 
-    void CancelDestructionMode()
+    public void CancelDestructionMode()
     {
         isDestructionMode = false;
 
@@ -759,10 +813,10 @@ public class BuildingSystem : MonoBehaviour
         }
     }
 
-    void UpdatePersistentDestructionLines()
+    public void UpdatePersistentDestructionLines()
     {
-        // Only update if in destruction mode and player backpack exists
-        if (!isDestructionMode || playerBackpack == null || destructionLines.Count == 0)
+        // Only update if player backpack exists and there are lines to update
+        if (playerBackpack == null || destructionLines.Count == 0)
             return;
 
         // Update all persistent destruction lines with current backpack position

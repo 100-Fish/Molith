@@ -11,6 +11,11 @@ public class BuildModeController : MonoBehaviour
     private bool isInBuildMode = false;
     public bool IsInBuildMode => isInBuildMode;
 
+    private bool isInDestructionMode = false;
+    public bool IsInDestructionMode => isInDestructionMode;
+
+    // Shared state for both build and destruction modes
+    private bool isInOrbitMode = false; // True when camera is orbiting blocks (either mode)
     private GameObject currentSelectedBlock = null;
     private SUPERCharacterAIO playerController;
     private float lastPlacementTime = 0f;
@@ -67,14 +72,17 @@ public class BuildModeController : MonoBehaviour
 
     void Update()
     {
+        // Handle destruction mode separately (can be entered without being in orbit mode yet)
+        if (isInDestructionMode)
+        {
+            UpdateDestructionMode();
+            return;
+        }
+
         // Only process build mode input when in build mode
         if (!isInBuildMode) return;
 
-        // Freeze player position in build mode
-        if (playerController != null)
-        {
-            playerController.transform.position = savedPlayerPosition;
-        }
+        UpdateOrbitMode();
 
         // Update arrows continuously as camera rotates
         if (currentSelectedBlock != null && GameManager.Instance != null &&
@@ -110,68 +118,62 @@ public class BuildModeController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Shared orbit mode update - freezes player position
+    /// </summary>
+    private void UpdateOrbitMode()
+    {
+        if (!isInOrbitMode) return;
+
+        // Freeze player position in orbit mode
+        if (playerController != null)
+        {
+            playerController.transform.position = savedPlayerPosition;
+        }
+    }
+
+    /// <summary>
+    /// Update logic specific to destruction mode
+    /// </summary>
+    private void UpdateDestructionMode()
+    {
+        UpdateOrbitMode();
+
+        // Update destruction lines
+        if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.UpdatePersistentDestructionLines();
+        }
+
+        // Exit destruction mode on Space (cancel)
+        if (Input.GetKeyDown(exitBuildModeKey))
+        {
+            ExitDestructionMode();
+            return;
+        }
+
+        // Confirm destruction on Q release
+        if (Input.GetKeyUp(KeyCode.Q))
+        {
+            if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+            {
+                GameManager.Instance.buildingSystem.OnDestructionConfirmed();
+            }
+        }
+    }
+
     public void EnterBuildMode(GameObject firstBlock)
     {
-        if (isInBuildMode) return;
+        if (isInBuildMode || isInDestructionMode) return;
 
         isInBuildMode = true;
-        currentSelectedBlock = firstBlock;
 
         // Lock Y-level to first block's Y position
         lockedYLevel = firstBlock.transform.position.y;
         Debug.Log($"BuildModeController: Locked Y-level to {lockedYLevel}");
 
-        // Disable player movement but keep camera control enabled
-        if (playerController != null)
-        {
-            // Save player position to restore later
-            savedPlayerPosition = playerController.transform.position;
-
-            // Save current camera distance
-            savedCameraDistance = playerController.maxCameraDistInternal;
-
-            // Rotate player to face the first block (Y-axis only)
-            Vector3 directionToBlock = firstBlock.transform.position - playerController.transform.position;
-            directionToBlock.y = 0; // Flatten to XZ plane for Y-axis rotation only
-
-            if (directionToBlock != Vector3.zero)
-            {
-                Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
-                playerController.transform.rotation = targetRotation;
-
-                // Position camera behind player's head looking towards the platform
-                // Calculate angles: yaw from player rotation, slight downward pitch to see platform
-                float yaw = targetRotation.eulerAngles.y;
-                float pitch = 30f; // Look slightly downward at the platform
-
-                // Use RotateView to set camera angles (smooth transition)
-                Vector3 cameraAngles = new Vector3(pitch, yaw, 0f);
-                playerController.RotateView(cameraAngles, true);
-            }
-
-            playerController.controllerPaused = true;
-            playerController.enableCameraControl = true; // Allow camera orbit
-            playerController.buildModeOverride = true;
-            playerController.buildModeOrbitCenter = firstBlock.transform.position;
-
-            // Smoothly transition camera distance for better view
-            DOVirtual.Float(
-                savedCameraDistance,
-                playerController.buildModeOrbitDistance,
-                0.5f,
-                value =>
-                {
-                    if (playerController != null)
-                    {
-                        playerController.maxCameraDistInternal = value;
-                        playerController.currentCameraZ = -value;
-                    }
-                }
-            ).SetEase(Ease.OutCubic);
-
-            // Force third-person perspective for build mode orbit
-            playerController.ChangePerspective(SUPERCharacter.PerspectiveModes._3rdPerson);
-        }
+        // Enter shared orbit mode
+        EnterOrbitMode(firstBlock);
 
         // Sync platformScale to arrow system and show arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null && playerController != null)
@@ -197,18 +199,9 @@ public class BuildModeController : MonoBehaviour
         if (!isInBuildMode) return;
 
         isInBuildMode = false;
-        currentSelectedBlock = null;
 
-        // Re-enable player movement and disable build mode override
-        if (playerController != null)
-        {
-            playerController.controllerPaused = false;
-            playerController.buildModeOverride = false;
-
-            // Restore camera distance
-            playerController.maxCameraDistInternal = savedCameraDistance;
-            playerController.currentCameraZ = -savedCameraDistance;
-        }
+        // Exit shared orbit mode
+        ExitOrbitMode();
 
         // Hide arrows
         if (GameManager.Instance != null && GameManager.Instance.arrowSystem != null)
@@ -516,4 +509,156 @@ public class BuildModeController : MonoBehaviour
 
         originalMaterials.Clear();
     }
+
+    #region Shared Orbit Mode Helpers
+
+    /// <summary>
+    /// Enters orbit mode - freezes player and sets up camera to orbit around target block
+    /// </summary>
+    private void EnterOrbitMode(GameObject targetBlock)
+    {
+        if (targetBlock == null || playerController == null) return;
+
+        isInOrbitMode = true;
+        currentSelectedBlock = targetBlock;
+
+        // Save player position to restore later
+        savedPlayerPosition = playerController.transform.position;
+
+        // Save current camera distance
+        savedCameraDistance = playerController.maxCameraDistInternal;
+
+        // Rotate player to face the target block (Y-axis only)
+        Vector3 directionToBlock = targetBlock.transform.position - playerController.transform.position;
+        directionToBlock.y = 0; // Flatten to XZ plane
+
+        if (directionToBlock != Vector3.zero)
+        {
+            Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
+            playerController.transform.rotation = targetRotation;
+
+            // Position camera looking towards the block
+            float yaw = targetRotation.eulerAngles.y;
+            float pitch = 30f; // Look slightly downward
+
+            Vector3 cameraAngles = new Vector3(pitch, yaw, 0f);
+            playerController.RotateView(cameraAngles, true);
+        }
+
+        // Freeze player movement but allow camera orbit
+        playerController.controllerPaused = true;
+        playerController.enableCameraControl = true;
+        playerController.buildModeOverride = true;
+        playerController.buildModeOrbitCenter = targetBlock.transform.position;
+
+        // Smoothly transition camera distance
+        DOVirtual.Float(
+            savedCameraDistance,
+            playerController.buildModeOrbitDistance,
+            0.5f,
+            value =>
+            {
+                if (playerController != null)
+                {
+                    playerController.maxCameraDistInternal = value;
+                    playerController.currentCameraZ = -value;
+                }
+            }
+        ).SetEase(Ease.OutCubic);
+
+        // Force third-person perspective
+        playerController.ChangePerspective(SUPERCharacter.PerspectiveModes._3rdPerson);
+    }
+
+    /// <summary>
+    /// Exits orbit mode - restores player movement and camera
+    /// </summary>
+    private void ExitOrbitMode()
+    {
+        if (!isInOrbitMode) return;
+
+        isInOrbitMode = false;
+        currentSelectedBlock = null;
+
+        if (playerController != null)
+        {
+            playerController.controllerPaused = false;
+            playerController.buildModeOverride = false;
+            playerController.maxCameraDistInternal = savedCameraDistance;
+            playerController.currentCameraZ = -savedCameraDistance;
+        }
+    }
+
+    /// <summary>
+    /// Updates the orbit center to a new block
+    /// </summary>
+    public void UpdateOrbitTarget(GameObject newBlock)
+    {
+        if (newBlock == null || !isInOrbitMode) return;
+
+        currentSelectedBlock = newBlock;
+
+        if (playerController != null)
+        {
+            playerController.buildModeOrbitCenter = newBlock.transform.position;
+        }
+    }
+
+    #endregion
+
+    #region Destruction Mode
+
+    /// <summary>
+    /// Enters destruction mode with camera orbiting the first highlighted block
+    /// </summary>
+    public void EnterDestructionMode(GameObject firstBlock)
+    {
+        if (isInDestructionMode || isInBuildMode) return;
+        if (firstBlock == null) return;
+
+        isInDestructionMode = true;
+
+        // Enter shared orbit mode
+        EnterOrbitMode(firstBlock);
+
+        Debug.Log("BuildModeController: Entered Destruction Mode - Press SPACE to cancel, release Q to confirm destruction");
+    }
+
+    /// <summary>
+    /// Exits destruction mode and cancels any pending destruction
+    /// </summary>
+    public void ExitDestructionMode()
+    {
+        if (!isInDestructionMode) return;
+
+        isInDestructionMode = false;
+
+        // Exit shared orbit mode
+        ExitOrbitMode();
+
+        // Cancel destruction in BuildingSystem
+        if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
+        {
+            GameManager.Instance.buildingSystem.CancelDestructionMode();
+        }
+
+        Debug.Log("BuildModeController: Exited Destruction Mode");
+    }
+
+    /// <summary>
+    /// Called when destruction is confirmed (Q released) - exits orbit but doesn't cancel
+    /// </summary>
+    public void ConfirmDestruction()
+    {
+        if (!isInDestructionMode) return;
+
+        isInDestructionMode = false;
+
+        // Exit orbit mode without canceling destruction
+        ExitOrbitMode();
+
+        Debug.Log("BuildModeController: Destruction confirmed");
+    }
+
+    #endregion
 }
