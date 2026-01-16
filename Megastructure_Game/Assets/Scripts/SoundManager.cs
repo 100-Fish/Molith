@@ -227,6 +227,24 @@ public class SoundManager : MonoBehaviour
 
         loopingSounds.Remove(soundID);
     }
+
+    /// <summary>
+    /// plays a raw AudioClip with optional volume (used for footsteps)
+    /// </summary>
+    public void PlayClip(AudioClip clip, float volume = 1f)
+    {
+        if (clip == null) return;
+
+        GameObject soundObject = new GameObject($"Sound: {clip.name}");
+        soundObject.transform.parent = transform;
+        StartCoroutine(DestroyAfterDelay(soundObject, clip.length * SOUND_CLEANUP_DELAY_MULTIPLIER));
+
+        AudioSource source = soundObject.AddComponent<AudioSource>();
+        source.clip = clip;
+        source.volume = volume * volumeMultiplier;
+        source.pitch = 1f + Random.Range(-DEFAULT_PITCH_VARIATION, DEFAULT_PITCH_VARIATION);
+        source.Play();
+    }
 }
 
 /// <summary>

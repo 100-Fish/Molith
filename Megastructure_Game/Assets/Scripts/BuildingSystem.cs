@@ -203,6 +203,10 @@ public class BuildingSystem : MonoBehaviour
         {
             if (GameManager.Instance.buildModeController.IsInBuildMode)
                 return;
+
+            // Check cooldown to prevent immediate re-entry after exiting build mode
+            if (!GameManager.Instance.buildModeController.CanToggleBuildMode())
+                return;
         }
 
         if (isDestructionMode)
@@ -1089,6 +1093,22 @@ public class BuildingSystem : MonoBehaviour
             );
             GameManager.Instance.adjacencyGrid.RegisterBlock(block, roundedPosition);
         }
+    }
+
+    /// <summary>
+    /// Returns the list of blocks in placement order (for weighted orbit center calculation)
+    /// </summary>
+    public List<GameObject> GetChainBlockOrder()
+    {
+        return chainBlockOrder;
+    }
+
+    /// <summary>
+    /// Returns highlighted blocks for destruction mode weighted orbit
+    /// </summary>
+    public List<GameObject> GetHighlightedBlocks()
+    {
+        return highlightedBlocks;
     }
 
     #region Chain Line System

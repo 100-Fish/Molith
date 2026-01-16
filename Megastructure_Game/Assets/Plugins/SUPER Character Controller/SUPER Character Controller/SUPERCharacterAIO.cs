@@ -234,6 +234,7 @@ namespace SUPERCharacter
         bool shouldCalculateFootstepTriggers = true;
         float StepCycle = 0;
         AudioSource playerAudioSource;
+        AudioSource footstepAudioSource; // Cached reference to SoundManager's AudioSource
         List<AudioClip> currentClipSet = new List<AudioClip>();
         [Space(18)]
         #endregion
@@ -501,7 +502,10 @@ namespace SUPERCharacter
 
             vaultInput = Input.GetKeyDown(VaultKey_L);
 #endif
-                MovInput = Vector2.up * Input.GetAxisRaw("Vertical") + Vector2.right * Input.GetAxisRaw("Horizontal");
+                // WASD only movement - no arrow keys or other input modalities
+                float verticalInput = Input.GetKey(KeyCode.W) ? 1f : Input.GetKey(KeyCode.S) ? -1f : 0f;
+                float horizontalInput = Input.GetKey(KeyCode.D) ? 1f : Input.GetKey(KeyCode.A) ? -1f : 0f;
+                MovInput = Vector2.up * verticalInput + Vector2.right * horizontalInput;
 #endif
                 #endregion
 
@@ -527,11 +531,11 @@ namespace SUPERCharacter
                                 if (!isInThirdPerson) { ChangePerspective(PerspectiveModes._3rdPerson); }
                                 if (perspecTog || (automaticallySwitchPerspective && maxCameraDistInternal == 0 && currentCameraZ == 0)) { ChangePerspective(PerspectiveModes._1stPerson); }
 
-                                // Disable zoom in build mode to maintain constant orbit distance
-                                if (!buildModeOverride)
-                                {
-                                    maxCameraDistInternal = Mathf.Clamp(maxCameraDistInternal - (mouseScrollWheel * (cameraZoomSensitivity * 2)), automaticallySwitchPerspective ? 0 : (capsule.radius * 2), maxCameraDistance);
-                                }
+                                // DISABLED: Scroll wheel zoom entirely
+                                // if (!buildModeOverride)
+                                // {
+                                //     maxCameraDistInternal = Mathf.Clamp(maxCameraDistInternal - (mouseScrollWheel * (cameraZoomSensitivity * 2)), automaticallySwitchPerspective ? 0 : (capsule.radius * 2), maxCameraDistance);
+                                // }
                             }
                             break;
                     }
@@ -1539,58 +1543,88 @@ namespace SUPERCharacter
         }
         public void CallFootstepClip()
         {
-            if (playerAudioSource)
+            if (!enableFootstepSounds)
             {
-                if (enableFootstepSounds && footstepSoundSet.Any())
+                Debug.Log("[Footstep] enableFootstepSounds is false");
+                return;
+            }
+            if (footstepSoundSet == null || !footstepSoundSet.Any())
+            {
+                Debug.Log("[Footstep] footstepSoundSet is null or empty");
+                return;
+            }
+
+            Debug.Log($"[Footstep] CallFootstepClip called. Ground material: {(currentGroundInfo.groundMaterial != null ? currentGroundInfo.groundMaterial.name : "null")}, ProfileCount: {footstepSoundSet.Count}");
+
+            // Find matching material profile
+            for (int i = 0; i < footstepSoundSet.Count(); i++)
+            {
+                if (footstepSoundSet[i].profileTriggerType == MatProfileType.Material)
                 {
-                    for (int i = 0; i < footstepSoundSet.Count(); i++)
+                    if (footstepSoundSet[i]._Materials.Contains(currentGroundInfo.groundMaterial))
                     {
-
-                        if (footstepSoundSet[i].profileTriggerType == MatProfileType.Material)
-                        {
-                            if (footstepSoundSet[i]._Materials.Contains(currentGroundInfo.groundMaterial))
-                            {
-                                currentClipSet = footstepSoundSet[i].footstepClips;
-                                break;
-                            }
-                            else if (i == footstepSoundSet.Count - 1)
-                            {
-                                currentClipSet = null;
-                            }
-                        }
-
-                        else if (footstepSoundSet[i].profileTriggerType == MatProfileType.physicMaterial)
-                        {
-                            if (footstepSoundSet[i]._physicMaterials.Contains(currentGroundInfo.groundPhysicMaterial))
-                            {
-                                currentClipSet = footstepSoundSet[i].footstepClips;
-                                break;
-                            }
-                            else if (i == footstepSoundSet.Count - 1)
-                            {
-                                currentClipSet = null;
-                            }
-                        }
-
-                        else if (footstepSoundSet[i].profileTriggerType == MatProfileType.terrainLayer)
-                        {
-                            if (footstepSoundSet[i]._Layers.Contains(currentGroundInfo.groundLayer))
-                            {
-                                currentClipSet = footstepSoundSet[i].footstepClips;
-                                break;
-                            }
-                            else if (i == footstepSoundSet.Count - 1)
-                            {
-                                currentClipSet = null;
-                            }
-                        }
+                        currentClipSet = footstepSoundSet[i].footstepClips;
+                        break;
                     }
-
-                    if (currentClipSet != null && currentClipSet.Any())
+                    else if (i == footstepSoundSet.Count - 1)
                     {
-                        playerAudioSource.PlayOneShot(currentClipSet[Random.Range(0, currentClipSet.Count())]);
+                        currentClipSet = null;
                     }
                 }
+                else if (footstepSoundSet[i].profileTriggerType == MatProfileType.physicMaterial)
+                {
+                    if (footstepSoundSet[i]._physicMaterials.Contains(currentGroundInfo.groundPhysicMaterial))
+                    {
+                        currentClipSet = footstepSoundSet[i].footstepClips;
+                        break;
+                    }
+                    else if (i == footstepSoundSet.Count - 1)
+                    {
+                        currentClipSet = null;
+                    }
+                }
+                else if (footstepSoundSet[i].profileTriggerType == MatProfileType.terrainLayer)
+                {
+                    if (footstepSoundSet[i]._Layers.Contains(currentGroundInfo.groundLayer))
+                    {
+                        currentClipSet = footstepSoundSet[i].footstepClips;
+                        break;
+                    }
+                    else if (i == footstepSoundSet.Count - 1)
+                    {
+                        currentClipSet = null;
+                    }
+                }
+            }
+
+            if (currentClipSet != null && currentClipSet.Any())
+            {
+                // Find SoundManager's AudioSource if not cached
+                if (footstepAudioSource == null)
+                {
+                    GameObject soundManager = GameObject.Find("SoundManager");
+                    Debug.Log($"[Footstep] SoundManager found: {soundManager != null}");
+                    if (soundManager != null)
+                    {
+                        footstepAudioSource = soundManager.GetComponent<AudioSource>();
+                        if (footstepAudioSource == null)
+                        {
+                            footstepAudioSource = soundManager.AddComponent<AudioSource>();
+                            footstepAudioSource.playOnAwake = false;
+                        }
+                    }
+                }
+
+                if (footstepAudioSource != null)
+                {
+                    AudioClip clip = currentClipSet[Random.Range(0, currentClipSet.Count())];
+                    Debug.Log($"[Footstep] Playing clip: {clip.name}");
+                    footstepAudioSource.PlayOneShot(clip, 0.5f);
+                }
+            }
+            else
+            {
+                Debug.Log($"[Footstep] No matching clip set found. currentClipSet null: {currentClipSet == null}");
             }
         }
         #endregion

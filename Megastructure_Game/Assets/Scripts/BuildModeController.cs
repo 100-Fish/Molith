@@ -1,11 +1,12 @@
 using UnityEngine;
 using SUPERCharacter;
 using DG.Tweening;
+using System.Collections.Generic;
+using System.Linq;
 
 public class BuildModeController : MonoBehaviour
 {
     [Header("Settings")]
-    public KeyCode exitBuildModeKey = KeyCode.Space;
     public float blockPlacementDelay = 0.15f;
 
     private bool isInBuildMode = false;
@@ -20,15 +21,30 @@ public class BuildModeController : MonoBehaviour
     private SUPERCharacterAIO playerController;
     private float lastPlacementTime = 0f;
 
+    // E key toggle cooldown
+    private float lastBuildModeToggleTime = 0f;
+    private const float BUILD_MODE_TOGGLE_COOLDOWN = 0.3f;
+
     [Header("Platform Settings")]
     [Tooltip("Scale multiplier for platforms and grid system (1.0 = normal size)")]
     [Range(0.1f, 5.0f)]
     public float platformScale = 1.0f;
 
+    [Header("Camera Orbit Settings")]
+    [Tooltip("Decay factor for weighted average orbit center (0.5 = more recent blocks weighted more)")]
+    [Range(0.1f, 0.9f)]
+    public float orbitWeightDecayFactor = 0.5f;
+
+    [Tooltip("Speed of lerping to new orbit center")]
+    public float orbitCenterLerpSpeed = 5f;
+
+    private Vector3 targetOrbitCenter;
+    private Vector3 currentOrbitCenter;
+
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
     private float lockedYLevel = 0f; // Stores Y-level when entering build mode
-    private System.Collections.Generic.Dictionary<GameObject, Material[]> originalMaterials = new System.Collections.Generic.Dictionary<GameObject, Material[]>();
+    private Dictionary<GameObject, Material[]> originalMaterials = new Dictionary<GameObject, Material[]>();
 
     void Awake()
     {
@@ -97,10 +113,11 @@ public class BuildModeController : MonoBehaviour
             GameManager.Instance.buildingSystem.UpdateChainLines();
         }
 
-        // Exit build mode
-        if (Input.GetKeyDown(exitBuildModeKey))
+        // Exit build mode with E key (same key as enter, with cooldown)
+        if (Input.GetKeyDown(KeyCode.E) && Time.time - lastBuildModeToggleTime > BUILD_MODE_TOGGLE_COOLDOWN)
         {
             ExitBuildMode();
+            lastBuildModeToggleTime = Time.time;
             return;
         }
 
@@ -119,7 +136,7 @@ public class BuildModeController : MonoBehaviour
     }
 
     /// <summary>
-    /// Shared orbit mode update - freezes player position
+    /// Shared orbit mode update - freezes player position and lerps orbit center
     /// </summary>
     private void UpdateOrbitMode()
     {
@@ -129,6 +146,13 @@ public class BuildModeController : MonoBehaviour
         if (playerController != null)
         {
             playerController.transform.position = savedPlayerPosition;
+
+            // Smoothly lerp orbit center to target
+            currentOrbitCenter = Vector3.Lerp(
+                currentOrbitCenter,
+                targetOrbitCenter,
+                orbitCenterLerpSpeed * Time.deltaTime);
+            playerController.buildModeOrbitCenter = currentOrbitCenter;
         }
     }
 
@@ -143,13 +167,6 @@ public class BuildModeController : MonoBehaviour
         if (GameManager.Instance != null && GameManager.Instance.buildingSystem != null)
         {
             GameManager.Instance.buildingSystem.UpdatePersistentDestructionLines();
-        }
-
-        // Exit destruction mode on Space (cancel)
-        if (Input.GetKeyDown(exitBuildModeKey))
-        {
-            ExitDestructionMode();
-            return;
         }
 
         // Confirm destruction on Q release
@@ -167,6 +184,7 @@ public class BuildModeController : MonoBehaviour
         if (isInBuildMode || isInDestructionMode) return;
 
         isInBuildMode = true;
+        lastBuildModeToggleTime = Time.time; // Set toggle time on entry
 
         // Lock Y-level to first block's Y position
         lockedYLevel = firstBlock.transform.position.y;
@@ -391,10 +409,11 @@ public class BuildModeController : MonoBehaviour
     {
         currentSelectedBlock = newBlock;
 
-        // Update orbit center for camera (camera will orbit around the new block)
-        if (playerController != null)
+        // Update orbit center using weighted average of all placed blocks in chain
+        if (playerController != null && GameManager.Instance?.buildingSystem != null)
         {
-            playerController.buildModeOrbitCenter = newBlock.transform.position;
+            targetOrbitCenter = CalculateWeightedOrbitCenter(
+                GameManager.Instance.buildingSystem.GetChainBlockOrder());
         }
 
         // Sync platformScale to arrow system and update arrows
@@ -403,6 +422,44 @@ public class BuildModeController : MonoBehaviour
             GameManager.Instance.arrowSystem.platformScale = platformScale;
             GameManager.Instance.arrowSystem.ShowArrows(newBlock, playerController.playerCamera);
         }
+    }
+
+    /// <summary>
+    /// Check if build mode toggle cooldown has elapsed
+    /// </summary>
+    public bool CanToggleBuildMode()
+    {
+        return Time.time - lastBuildModeToggleTime > BUILD_MODE_TOGGLE_COOLDOWN;
+    }
+
+    /// <summary>
+    /// Calculates weighted exponential average of block positions.
+    /// More recent blocks have higher weights (decay factor 0.5 means newest block has weight 1.0,
+    /// previous has 0.5, then 0.25, etc.)
+    /// </summary>
+    private Vector3 CalculateWeightedOrbitCenter(List<GameObject> blockList)
+    {
+        if (blockList == null || blockList.Count == 0)
+            return currentOrbitCenter;
+
+        var validBlocks = blockList.Where(b => b != null).ToList();
+        if (validBlocks.Count == 0)
+            return currentOrbitCenter;
+
+        float totalWeight = 0f;
+        Vector3 weightedSum = Vector3.zero;
+        int n = validBlocks.Count;
+
+        for (int i = 0; i < n; i++)
+        {
+            // Weight = decayFactor^(n-1-i)
+            // i=0 (oldest) has weight decayFactor^(n-1), i=n-1 (newest) has weight 1.0
+            float weight = Mathf.Pow(orbitWeightDecayFactor, n - 1 - i);
+            weightedSum += validBlocks[i].transform.position * weight;
+            totalWeight += weight;
+        }
+
+        return weightedSum / totalWeight;
     }
 
     /// <summary>
@@ -549,7 +606,11 @@ public class BuildModeController : MonoBehaviour
         playerController.controllerPaused = true;
         playerController.enableCameraControl = true;
         playerController.buildModeOverride = true;
-        playerController.buildModeOrbitCenter = targetBlock.transform.position;
+
+        // Initialize orbit centers
+        currentOrbitCenter = targetBlock.transform.position;
+        targetOrbitCenter = targetBlock.transform.position;
+        playerController.buildModeOrbitCenter = currentOrbitCenter;
 
         // Smoothly transition camera distance
         DOVirtual.Float(
@@ -590,7 +651,7 @@ public class BuildModeController : MonoBehaviour
     }
 
     /// <summary>
-    /// Updates the orbit center to a new block
+    /// Updates the orbit center to a new block (uses weighted average for destruction mode)
     /// </summary>
     public void UpdateOrbitTarget(GameObject newBlock)
     {
@@ -598,9 +659,15 @@ public class BuildModeController : MonoBehaviour
 
         currentSelectedBlock = newBlock;
 
-        if (playerController != null)
+        // In destruction mode, use highlighted blocks for weighted average
+        if (isInDestructionMode && GameManager.Instance?.buildingSystem != null)
         {
-            playerController.buildModeOrbitCenter = newBlock.transform.position;
+            targetOrbitCenter = CalculateWeightedOrbitCenter(
+                GameManager.Instance.buildingSystem.GetHighlightedBlocks());
+        }
+        else
+        {
+            targetOrbitCenter = newBlock.transform.position;
         }
     }
 
