@@ -23,13 +23,14 @@ public class UIManager : MonoBehaviour
     [Tooltip("Duration of color transition animation")]
     public float colorTransitionDuration = 0.3f;
 
+    [Header("UI Sprites")]
+    [Tooltip("Sprite shown for inactive state (key not pressed, block unavailable)")]
+    public Sprite inactiveSprite;
+
+    [Tooltip("Sprite shown for active state (key pressed, block available)")]
+    public Sprite activeSprite;
+
     [Header("Key Indicators")]
-    [Tooltip("Sprite shown when key is not pressed")]
-    public Sprite keyInactiveSprite;
-
-    [Tooltip("Sprite shown when key is pressed")]
-    public Sprite keyActiveSprite;
-
     [Tooltip("List of keyboard key UI indicators")]
     public List<KeyIndicator> keyIndicators = new List<KeyIndicator>();
 
@@ -40,8 +41,10 @@ public class UIManager : MonoBehaviour
     [Tooltip("Text field for camera telemetry (position and rotation)")]
     public TextMeshProUGUI cameraTelemetryText;
 
-    [Tooltip("Text field for block count display")]
-    public TextMeshProUGUI blockCountText;
+    [Tooltip("Transform of the block counter parent (must have BlockCounterUI component)")]
+    public Transform blockCounterTransform;
+
+    private BlockCounterUI blockCounterUI;
 
     [Header("Mode Indicator")]
     [Tooltip("Single image that shows mode color (hidden when in default mode)")]
@@ -62,6 +65,9 @@ public class UIManager : MonoBehaviour
 
     [Tooltip("Padding around block bounds for crosshair box")]
     public float crosshairBoxPadding = 20f;
+
+    [Tooltip("Minimum margin from canvas edges for crosshair box")]
+    public float crosshairBoxEdgeMargin = 50f;
 
     private Color currentTargetColor;
     private enum UIState { Default, Placement, Destruction, BuildMode }
@@ -97,6 +103,31 @@ public class UIManager : MonoBehaviour
         {
             originalCrosshairBoxSize = crosshairBoxImage.rectTransform.sizeDelta;
             originalCrosshairBoxPosition = crosshairBoxImage.rectTransform.anchoredPosition;
+        }
+
+        // Get BlockCounterUI component and sync sprites
+        if (blockCounterTransform != null)
+        {
+            blockCounterUI = blockCounterTransform.GetComponent<BlockCounterUI>();
+        }
+
+        // Initialize block counter with BuildingSystem values
+        InitializeBlockCounter();
+    }
+
+    void InitializeBlockCounter()
+    {
+        if (blockCounterUI == null) return;
+
+        // Sync sprites from UIManager (inverted: available=inactive, used=active)
+        blockCounterUI.availableSprite = inactiveSprite;
+        blockCounterUI.usedSprite = activeSprite;
+
+        // Sync maxBlocks from BuildingSystem
+        var buildingSystem = GameManager.Instance?.buildingSystem;
+        if (buildingSystem != null)
+        {
+            blockCounterUI.SetMaxBlocks(buildingSystem.maxBlocks);
         }
     }
 
@@ -139,9 +170,9 @@ public class UIManager : MonoBehaviour
 
         // Block count display
         var buildingSystem = GameManager.Instance.buildingSystem;
-        if (blockCountText != null && buildingSystem != null)
+        if (blockCounterUI != null && buildingSystem != null)
         {
-            blockCountText.text = $"BLOCKS: {buildingSystem.CurrentBlockCount}/{buildingSystem.maxBlocks}";
+            blockCounterUI.UpdateBlockCount(buildingSystem.CurrentBlockCount);
         }
     }
 
@@ -158,7 +189,7 @@ public class UIManager : MonoBehaviour
             if (isPressed != indicator.wasPressed)
             {
                 indicator.wasPressed = isPressed;
-                indicator.keyImage.sprite = isPressed ? keyActiveSprite : keyInactiveSprite;
+                indicator.keyImage.sprite = isPressed ? activeSprite : inactiveSprite;
             }
         }
     }
@@ -314,13 +345,23 @@ public class UIManager : MonoBehaviour
             if (boxScale.x != 0f) boxSize.x /= boxScale.x;
             if (boxScale.y != 0f) boxSize.y /= boxScale.y;
 
+            // Clamp box size so it doesn't get too close to canvas edges
+            RectTransform canvasRect = crosshairBoxImage.canvas?.GetComponent<RectTransform>();
+            if (canvasRect != null)
+            {
+                Vector2 canvasSize = canvasRect.rect.size;
+                float maxWidth = (canvasSize.x - crosshairBoxEdgeMargin * 2f) / Mathf.Abs(boxScale.x);
+                float maxHeight = (canvasSize.y - crosshairBoxEdgeMargin * 2f) / Mathf.Abs(boxScale.y);
+                boxSize.x = Mathf.Min(boxSize.x, maxWidth);
+                boxSize.y = Mathf.Min(boxSize.y, maxHeight);
+            }
+
             crosshairBoxSizeTween?.Kill();
             crosshairBoxSizeTween = crosshairBoxImage.rectTransform
                 .DOSizeDelta(boxSize, crosshairTransitionDuration)
                 .SetEase(Ease.OutCubic);
 
             // Position box at WASD center
-            RectTransform canvasRect = crosshairBoxImage.canvas?.GetComponent<RectTransform>();
             if (canvasRect != null)
             {
                 Vector2 localPoint;
