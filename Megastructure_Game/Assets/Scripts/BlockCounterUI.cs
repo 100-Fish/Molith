@@ -42,7 +42,7 @@ public class BlockCounterUI : MonoBehaviour
     void Update()
     {
         // In editor, check if settings changed and regenerate
-        #if UNITY_EDITOR
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             if (maxBlocks != lastMaxBlocks || flipAlternating != lastFlipAlternating)
@@ -50,7 +50,7 @@ public class BlockCounterUI : MonoBehaviour
                 RegenerateIndicators();
             }
         }
-        #endif
+#endif
     }
 
     void RegenerateIfNeeded()
@@ -80,7 +80,7 @@ public class BlockCounterUI : MonoBehaviour
         {
             GameObject indicator;
 
-            #if UNITY_EDITOR
+#if UNITY_EDITOR
             if (!Application.isPlaying)
             {
                 indicator = (GameObject)PrefabUtility.InstantiatePrefab(blockIndicatorPrefab, transform);
@@ -89,9 +89,9 @@ public class BlockCounterUI : MonoBehaviour
             {
                 indicator = Instantiate(blockIndicatorPrefab, transform);
             }
-            #else
+#else
             indicator = Instantiate(blockIndicatorPrefab, transform);
-            #endif
+#endif
 
             indicator.name = $"BlockIndicator_{i}";
 
@@ -118,12 +118,12 @@ public class BlockCounterUI : MonoBehaviour
         lastMaxBlocks = maxBlocks;
         lastFlipAlternating = flipAlternating;
 
-        #if UNITY_EDITOR
+#if UNITY_EDITOR
         if (!Application.isPlaying)
         {
             EditorUtility.SetDirty(gameObject);
         }
-        #endif
+#endif
     }
 
     void ClearChildren()
@@ -137,7 +137,7 @@ public class BlockCounterUI : MonoBehaviour
 
         foreach (var child in toDestroy)
         {
-            #if UNITY_EDITOR
+#if UNITY_EDITOR
             if (!Application.isPlaying)
             {
                 DestroyImmediate(child);
@@ -146,9 +146,9 @@ public class BlockCounterUI : MonoBehaviour
             {
                 Destroy(child);
             }
-            #else
+#else
             Destroy(child);
-            #endif
+#endif
         }
     }
 
