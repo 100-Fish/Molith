@@ -121,7 +121,7 @@ namespace Beardy
             {
                 int positionX;
                 int positionY;
-                Vector2 cellStartOffset = (i+1 > rectChildrenCount - actualLastCellsCount) ? lastCellsStartOffset : startOffset;
+                Vector2 cellStartOffset = (i + 1 > rectChildrenCount - actualLastCellsCount) ? lastCellsStartOffset : startOffset;
 
                 if (startAxis == Axis.Horizontal)
                 {
