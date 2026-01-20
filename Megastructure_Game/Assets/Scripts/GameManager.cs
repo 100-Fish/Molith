@@ -67,6 +67,22 @@ public class GameManager : MonoBehaviour
     // Build mode uses the same color as placement mode
     public Color buildModeColor => placementColor;
 
+    [Header("Height Tracking")]
+    [Tooltip("The minimum height threshold before displaying actual height (displays xx.xx until exceeded)")]
+    public float heightDisplayThreshold = 10f;
+
+    private float maxHeightReached = 0f;
+
+    /// <summary>
+    /// The maximum height the player has reached. Returns 0 if below threshold.
+    /// </summary>
+    public float MaxHeightReached => maxHeightReached;
+
+    /// <summary>
+    /// Whether the player has exceeded the height threshold.
+    /// </summary>
+    public bool HasExceededHeightThreshold => maxHeightReached > heightDisplayThreshold;
+
     void Awake()
     {
         if (instance == null)
@@ -83,6 +99,30 @@ public class GameManager : MonoBehaviour
     void Start()
     {
         ValidateReferences();
+    }
+
+    void Update()
+    {
+        UpdateMaxHeight();
+    }
+
+    void UpdateMaxHeight()
+    {
+        if (playerController == null) return;
+
+        float currentHeight = playerController.transform.position.y;
+        if (currentHeight > maxHeightReached)
+        {
+            maxHeightReached = currentHeight;
+        }
+    }
+
+    /// <summary>
+    /// Resets the max height tracker (useful for respawning or level changes).
+    /// </summary>
+    public void ResetMaxHeight()
+    {
+        maxHeightReached = 0f;
     }
 
     void ValidateReferences()

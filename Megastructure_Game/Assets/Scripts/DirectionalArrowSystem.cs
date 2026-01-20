@@ -10,8 +10,16 @@ public class DirectionalArrowSystem : MonoBehaviour
 
     [Header("Arrow Settings")]
     public float arrowOffset = 0.6f;
-    public float snapDuration = 0.3f; // DOTween duration for smooth snapping
+    public float snapDuration = 0.15f; // DOTween duration for smooth snapping
+    public Ease snapEase = Ease.OutBack; // Bouncy easing for direction changes
     public string[] wasdLabels = new string[] { "W", "A", "S", "D" };
+
+    [Header("Bounce Animation Settings")]
+    public float bounceInDuration = 0.4f;
+    public float bounceOutDuration = 0.2f;
+    public Ease bounceInEase = Ease.OutBack;
+    public Ease bounceOutEase = Ease.InBack;
+    public float bounceScale = 1.3f; // Scale overshoot for bounce effect
 
     [Header("Platform Configuration")]
     [Tooltip("Scale multiplier for platforms (should match BuildModeController)")]
@@ -29,7 +37,8 @@ public class DirectionalArrowSystem : MonoBehaviour
     private class ArrowPositionData
     {
         public Vector3 worldPosition;
-        public Tweener tween;
+        public Tweener positionTween;
+        public Tweener scaleTween;
     }
 
     void Start()
@@ -93,7 +102,21 @@ public class DirectionalArrowSystem : MonoBehaviour
         for (int i = 0; i < 4; i++)
         {
             if (arrowTextElements[i] != null)
+            {
+                // Kill any existing scale tween
+                if (arrowData[i].scaleTween != null && arrowData[i].scaleTween.IsActive())
+                {
+                    arrowData[i].scaleTween.Kill();
+                }
+
                 arrowTextElements[i].gameObject.SetActive(true);
+
+                // Start from scale 0 and bounce in
+                arrowTextElements[i].rectTransform.localScale = Vector3.zero;
+                arrowData[i].scaleTween = arrowTextElements[i].rectTransform
+                    .DOScale(Vector3.one, bounceInDuration)
+                    .SetEase(bounceInEase);
+            }
         }
 
         UpdateArrowPositions();
@@ -105,20 +128,34 @@ public class DirectionalArrowSystem : MonoBehaviour
         currentBlock = null;
         playerCamera = null;
 
-        // Kill all active tweens
+        // Kill all active position tweens and animate out with bounce
         for (int i = 0; i < 4; i++)
         {
-            if (arrowData[i] != null && arrowData[i].tween != null && arrowData[i].tween.IsActive())
+            if (arrowData[i] != null)
             {
-                arrowData[i].tween.Kill();
+                if (arrowData[i].positionTween != null && arrowData[i].positionTween.IsActive())
+                {
+                    arrowData[i].positionTween.Kill();
+                }
+                if (arrowData[i].scaleTween != null && arrowData[i].scaleTween.IsActive())
+                {
+                    arrowData[i].scaleTween.Kill();
+                }
             }
-        }
 
-        // Hide all arrow UI elements
-        foreach (var arrow in arrowTextElements)
-        {
-            if (arrow != null)
-                arrow.gameObject.SetActive(false);
+            // Bounce out animation
+            if (arrowTextElements[i] != null && arrowTextElements[i].gameObject.activeInHierarchy)
+            {
+                int index = i; // Capture for closure
+                arrowData[i].scaleTween = arrowTextElements[i].rectTransform
+                    .DOScale(Vector3.zero, bounceOutDuration)
+                    .SetEase(bounceOutEase)
+                    .OnComplete(() =>
+                    {
+                        if (arrowTextElements[index] != null)
+                            arrowTextElements[index].gameObject.SetActive(false);
+                    });
+            }
         }
     }
 
@@ -171,21 +208,33 @@ public class DirectionalArrowSystem : MonoBehaviour
             {
                 currentCardinalDirections[i] = newCardinalDirections[i];
 
-                // Kill existing tween
-                if (arrowData[i].tween != null && arrowData[i].tween.IsActive())
+                // Kill existing position tween
+                if (arrowData[i].positionTween != null && arrowData[i].positionTween.IsActive())
                 {
-                    arrowData[i].tween.Kill();
+                    arrowData[i].positionTween.Kill();
                 }
 
-                // Animate the world position smoothly
+                // Animate the world position smoothly with bouncy easing
                 Vector3 startPos = arrowData[i].worldPosition != Vector3.zero ? arrowData[i].worldPosition : newTargetWorldPos;
 
-                arrowData[i].tween = DOTween.To(
+                arrowData[i].positionTween = DOTween.To(
                     () => startPos,
                     x => arrowData[i].worldPosition = x,
                     newTargetWorldPos,
                     snapDuration
-                ).SetEase(Ease.OutCubic);
+                ).SetEase(snapEase);
+
+                // Add a subtle scale punch when direction changes
+                if (arrowTextElements[i] != null && arrowTextElements[i].gameObject.activeInHierarchy)
+                {
+                    if (arrowData[i].scaleTween != null && arrowData[i].scaleTween.IsActive())
+                    {
+                        arrowData[i].scaleTween.Kill();
+                    }
+                    arrowTextElements[i].rectTransform.localScale = Vector3.one;
+                    arrowData[i].scaleTween = arrowTextElements[i].rectTransform
+                        .DOPunchScale(Vector3.one * 0.2f, snapDuration, 1, 0.5f);
+                }
             }
             else
             {
@@ -316,9 +365,16 @@ public class DirectionalArrowSystem : MonoBehaviour
         // Clean up tweens
         for (int i = 0; i < 4; i++)
         {
-            if (arrowData[i] != null && arrowData[i].tween != null && arrowData[i].tween.IsActive())
+            if (arrowData[i] != null)
             {
-                arrowData[i].tween.Kill();
+                if (arrowData[i].positionTween != null && arrowData[i].positionTween.IsActive())
+                {
+                    arrowData[i].positionTween.Kill();
+                }
+                if (arrowData[i].scaleTween != null && arrowData[i].scaleTween.IsActive())
+                {
+                    arrowData[i].scaleTween.Kill();
+                }
             }
         }
 

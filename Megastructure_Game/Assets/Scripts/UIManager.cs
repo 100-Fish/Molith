@@ -19,6 +19,9 @@ public class KeyIndicator
 
     [HideInInspector]
     public bool wasPressed;
+
+    [HideInInspector]
+    public Tweener scaleTween;
 }
 
 [ExecuteAlways]
@@ -39,12 +42,29 @@ public class UIManager : MonoBehaviour
     [Tooltip("List of keyboard key UI indicators")]
     public List<KeyIndicator> keyIndicators = new List<KeyIndicator>();
 
+    [Header("Key Indicator Animation")]
+    [Tooltip("Duration of bounce animation when key is pressed")]
+    public float keyPressBounceDuration = 0.25f;
+    [Tooltip("Duration of bounce animation when key is released")]
+    public float keyReleaseBounceDuration = 0.15f;
+    [Tooltip("Easing for key press animation")]
+    public Ease keyPressEase = Ease.OutBack;
+    [Tooltip("Easing for key release animation")]
+    public Ease keyReleaseEase = Ease.InBack;
+    [Tooltip("Scale when key is pressed")]
+    public float keyPressedScale = 1.2f;
+    [Tooltip("Scale when key is released")]
+    public float keyReleasedScale = 1.0f;
+
     [Header("Telemetry UI")]
     [Tooltip("Text field for player telemetry (position and rotation)")]
     public TextMeshProUGUI playerTelemetryText;
 
     [Tooltip("Text field for camera telemetry (position and rotation)")]
     public TextMeshProUGUI cameraTelemetryText;
+
+    [Tooltip("Text field for max height reached display")]
+    public TextMeshProUGUI maxHeightText;
 
     [Tooltip("Font for text labels (letters) - set as main font on TMP components")]
     public TMP_FontAsset labelFont;
@@ -158,6 +178,11 @@ public class UIManager : MonoBehaviour
             cameraTelemetryText.font = labelFont;
             cameraTelemetryText.richText = true;
         }
+        if (maxHeightText != null)
+        {
+            maxHeightText.font = labelFont;
+            maxHeightText.richText = true;
+        }
 
         // Add numberFont as a fallback to labelFont if not already present
         // This allows the <font="..."> tag to find it at runtime
@@ -213,11 +238,28 @@ public class UIManager : MonoBehaviour
             return;
 
         UpdateTelemetry();
+        UpdateMaxHeightDisplay();
         UpdateUIState();
         UpdateKeyIndicators();
 
         if (currentState == UIState.BuildMode)
             UpdateBuildModeCrosshair();
+    }
+
+    void UpdateMaxHeightDisplay()
+    {
+        if (maxHeightText == null) return;
+
+        string displayText;
+        if (GameManager.Instance.HasExceededHeightThreshold)
+        {
+            displayText = $"{GameManager.Instance.MaxHeightReached:F2}";
+        }
+        else
+        {
+            displayText = "xx.xx";
+        }
+        SetTextWithDualFonts(maxHeightText, displayText);
     }
 
     void UpdateTelemetry()
@@ -231,8 +273,8 @@ public class UIManager : MonoBehaviour
         {
             Vector3 playerPos = playerController.transform.position;
             Vector3 playerRot = playerController.transform.eulerAngles;
-            string text = $"POS {playerPos.x:F2}, {playerPos.y:F2}, {playerPos.z:F2}\n" +
-                          $"ROT {playerRot.x:F1}, {playerRot.y:F1}, {playerRot.z:F1}";
+            string text = $"{playerPos.x:F2},x{playerPos.y:F2}y{playerPos.z:F2}z\n" +
+                          $"{playerRot.x:F1},x{playerRot.y:F1}y{playerRot.z:F1}z";
             SetTextWithDualFonts(playerTelemetryText, text);
         }
 
@@ -241,8 +283,8 @@ public class UIManager : MonoBehaviour
         {
             Vector3 camPos = playerController.playerCamera.transform.position;
             Vector3 camRot = playerController.playerCamera.transform.eulerAngles;
-            string text = $"CAM.POS {camPos.x:F2}, {camPos.y:F2}, {camPos.z:F2}\n" +
-                          $"CAM.ROT {camRot.x:F1}, {camRot.y:F1}, {camRot.z:F1}";
+            string text = $"{camPos.x:F2}x{camPos.y:F2}y{camPos.z:F2}z\n" +
+                          $"{camRot.x:F1}x{camRot.y:F1}y{camRot.z:F1}z";
             SetTextWithDualFonts(cameraTelemetryText, text);
         }
 
@@ -276,7 +318,6 @@ public class UIManager : MonoBehaviour
 
             bool isPressed = Input.GetKey(indicator.key);
 
-            // Only update sprite if state changed
             if (isPressed != indicator.wasPressed)
             {
                 indicator.wasPressed = isPressed;
