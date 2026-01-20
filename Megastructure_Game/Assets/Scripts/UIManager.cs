@@ -4,6 +4,10 @@ using TMPro;
 using DG.Tweening;
 using System.Collections.Generic;
 
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
+
 [System.Serializable]
 public class KeyIndicator
 {
@@ -17,6 +21,7 @@ public class KeyIndicator
     public bool wasPressed;
 }
 
+[ExecuteAlways]
 public class UIManager : MonoBehaviour
 {
     [Header("Color Transition Settings")]
@@ -41,6 +46,11 @@ public class UIManager : MonoBehaviour
     [Tooltip("Text field for camera telemetry (position and rotation)")]
     public TextMeshProUGUI cameraTelemetryText;
 
+    [Tooltip("Font for text labels (letters) - set as main font on TMP components")]
+    public TMP_FontAsset labelFont;
+
+    [Tooltip("Font for numbers and decimal points - added as fallback at runtime")]
+    public TMP_FontAsset numberFont;
 
     [Tooltip("Transform of the block counter parent (must have BlockCounterUI component)")]
     public Transform blockCounterTransform;
@@ -112,10 +122,74 @@ public class UIManager : MonoBehaviour
             blockCounterUI = blockCounterTransform.GetComponent<BlockCounterUI>();
         }
 
+        // Setup dual font system - add numberFont as fallback to labelFont so <font> tags work
+        SetupDualFonts();
+
         // Initialize block counter with BuildingSystem values
         InitializeBlockCounter();
     }
 
+    void OnValidate()
+    {
+        // Apply dual fonts in editor when values change
+        SetupDualFonts();
+
+#if UNITY_EDITOR
+        // Update preview text in editor
+        if (!Application.isPlaying)
+        {
+            ApplyEditorPreviewText();
+        }
+#endif
+    }
+
+    void SetupDualFonts()
+    {
+        if (labelFont == null || numberFont == null) return;
+
+        // Set the main font on telemetry text components
+        if (playerTelemetryText != null)
+        {
+            playerTelemetryText.font = labelFont;
+            playerTelemetryText.richText = true;
+        }
+        if (cameraTelemetryText != null)
+        {
+            cameraTelemetryText.font = labelFont;
+            cameraTelemetryText.richText = true;
+        }
+
+        // Add numberFont as a fallback to labelFont if not already present
+        // This allows the <font="..."> tag to find it at runtime
+        if (labelFont.fallbackFontAssetTable == null)
+            labelFont.fallbackFontAssetTable = new List<TMP_FontAsset>();
+
+        if (!labelFont.fallbackFontAssetTable.Contains(numberFont))
+            labelFont.fallbackFontAssetTable.Add(numberFont);
+    }
+
+#if UNITY_EDITOR
+    void ApplyEditorPreviewText()
+    {
+        if (labelFont == null || numberFont == null) return;
+
+        // Sample preview text for editor
+        string playerPreview = "POS 0.00, 0.00, 0.00\nROT 0.0, 0.0, 0.0";
+        string cameraPreview = "CAM.POS 0.00, 0.00, 0.00\nCAM.ROT 0.0, 0.0, 0.0";
+
+        if (playerTelemetryText != null)
+            SetTextWithDualFonts(playerTelemetryText, playerPreview);
+
+        if (cameraTelemetryText != null)
+            SetTextWithDualFonts(cameraTelemetryText, cameraPreview);
+
+        // Mark dirty so changes are saved
+        if (playerTelemetryText != null)
+            EditorUtility.SetDirty(playerTelemetryText);
+        if (cameraTelemetryText != null)
+            EditorUtility.SetDirty(cameraTelemetryText);
+    }
+#endif
 
     void InitializeBlockCounter()
     {
@@ -157,8 +231,9 @@ public class UIManager : MonoBehaviour
         {
             Vector3 playerPos = playerController.transform.position;
             Vector3 playerRot = playerController.transform.eulerAngles;
-            playerTelemetryText.text = $"POS {playerPos.x:F2}, {playerPos.y:F2}, {playerPos.z:F2}\n" +
-                                       $"ROT {playerRot.x:F1}, {playerRot.y:F1}, {playerRot.z:F1}";
+            string text = $"POS {playerPos.x:F2}, {playerPos.y:F2}, {playerPos.z:F2}\n" +
+                          $"ROT {playerRot.x:F1}, {playerRot.y:F1}, {playerRot.z:F1}";
+            SetTextWithDualFonts(playerTelemetryText, text);
         }
 
         // Camera telemetry (position and rotation in one text)
@@ -166,8 +241,9 @@ public class UIManager : MonoBehaviour
         {
             Vector3 camPos = playerController.playerCamera.transform.position;
             Vector3 camRot = playerController.playerCamera.transform.eulerAngles;
-            cameraTelemetryText.text = $"CAM.POS {camPos.x:F2}, {camPos.y:F2}, {camPos.z:F2}\n" +
-                                       $"CAM.ROT {camRot.x:F1}, {camRot.y:F1}, {camRot.z:F1}";
+            string text = $"CAM.POS {camPos.x:F2}, {camPos.y:F2}, {camPos.z:F2}\n" +
+                          $"CAM.ROT {camRot.x:F1}, {camRot.y:F1}, {camRot.z:F1}";
+            SetTextWithDualFonts(cameraTelemetryText, text);
         }
 
         // Block count display
@@ -176,6 +252,19 @@ public class UIManager : MonoBehaviour
         {
             blockCounterUI.UpdateBlockCount(buildingSystem.CurrentBlockCount);
         }
+    }
+
+    /// <summary>
+    /// Sets text on a TMP component. If dual fonts are configured, labels use labelFont
+    /// and numbers use numberFont (via fallback system).
+    /// </summary>
+    void SetTextWithDualFonts(TextMeshProUGUI textComponent, string text)
+    {
+        if (textComponent == null) return;
+
+        // Just set plain text - the fallback font system handles number rendering
+        // The labelFont should NOT contain number glyphs, so they fall back to numberFont
+        textComponent.text = text;
     }
 
     void UpdateKeyIndicators()
