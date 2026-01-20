@@ -212,27 +212,37 @@ public class DirectionalArrowSystem : MonoBehaviour
                 if (arrowData[i].positionTween != null && arrowData[i].positionTween.IsActive())
                 {
                     arrowData[i].positionTween.Kill();
+                    arrowData[i].positionTween = null;
                 }
 
-                // Animate the world position smoothly with bouncy easing
-                Vector3 startPos = arrowData[i].worldPosition != Vector3.zero ? arrowData[i].worldPosition : newTargetWorldPos;
+                // Initialize world position if not set
+                if (arrowData[i].worldPosition == Vector3.zero)
+                {
+                    arrowData[i].worldPosition = newTargetWorldPos;
+                }
 
-                arrowData[i].positionTween = DOTween.To(
-                    () => startPos,
-                    x => arrowData[i].worldPosition = x,
+                // Capture index for closure to avoid array bounds issues
+                int capturedIndex = i;
+                ArrowPositionData capturedData = arrowData[i];
+
+                // Animate the world position smoothly with bouncy easing
+                capturedData.positionTween = DOTween.To(
+                    () => capturedData.worldPosition,
+                    x => capturedData.worldPosition = x,
                     newTargetWorldPos,
                     snapDuration
                 ).SetEase(snapEase);
 
                 // Add a subtle scale punch when direction changes
-                if (arrowTextElements[i] != null && arrowTextElements[i].gameObject.activeInHierarchy)
+                if (arrowTextElements[capturedIndex] != null && arrowTextElements[capturedIndex].gameObject.activeInHierarchy)
                 {
-                    if (arrowData[i].scaleTween != null && arrowData[i].scaleTween.IsActive())
+                    if (capturedData.scaleTween != null && capturedData.scaleTween.IsActive())
                     {
-                        arrowData[i].scaleTween.Kill();
+                        capturedData.scaleTween.Kill();
+                        capturedData.scaleTween = null;
                     }
-                    arrowTextElements[i].rectTransform.localScale = Vector3.one;
-                    arrowData[i].scaleTween = arrowTextElements[i].rectTransform
+                    arrowTextElements[capturedIndex].rectTransform.localScale = Vector3.one;
+                    capturedData.scaleTween = arrowTextElements[capturedIndex].rectTransform
                         .DOPunchScale(Vector3.one * 0.2f, snapDuration, 1, 0.5f);
                 }
             }

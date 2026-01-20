@@ -43,8 +43,12 @@ public class BuildModeController : MonoBehaviour
 
     private Vector3 savedPlayerPosition;
     private float savedCameraDistance;
+    private float savedBuildModeOrbitDistance; // Original buildModeOrbitDistance to restore after exit
     private float lockedYLevel = 0f; // Stores Y-level when entering build mode
     private Dictionary<GameObject, Material[]> originalMaterials = new Dictionary<GameObject, Material[]>();
+
+    // Tween references to prevent overlapping lerps
+    private Tweener cameraDistanceTween;
 
     void Awake()
     {
@@ -582,8 +586,9 @@ public class BuildModeController : MonoBehaviour
         // Save player position to restore later
         savedPlayerPosition = playerController.transform.position;
 
-        // Save current camera distance
+        // Save current camera distance and orbit distance
         savedCameraDistance = playerController.maxCameraDistInternal;
+        savedBuildModeOrbitDistance = playerController.buildModeOrbitDistance;
 
         // Rotate player to face the target block (Y-axis only)
         Vector3 directionToBlock = targetBlock.transform.position - playerController.transform.position;
@@ -594,12 +599,13 @@ public class BuildModeController : MonoBehaviour
             Quaternion targetRotation = Quaternion.LookRotation(directionToBlock);
             playerController.transform.rotation = targetRotation;
 
-            // Position camera looking towards the block
+            // Position camera looking towards the block - use immediate rotation (false)
+            // to avoid coroutine conflicts with orbit mode camera control
             float yaw = targetRotation.eulerAngles.y;
             float pitch = 30f; // Look slightly downward
 
             Vector3 cameraAngles = new Vector3(pitch, yaw, 0f);
-            playerController.RotateView(cameraAngles, true);
+            playerController.RotateView(cameraAngles, false);
         }
 
         // Freeze player movement but allow camera orbit
@@ -607,22 +613,30 @@ public class BuildModeController : MonoBehaviour
         playerController.enableCameraControl = true;
         playerController.buildModeOverride = true;
 
-        // Initialize orbit centers
+        // Initialize orbit centers (set immediately, no lerp on initial entry)
         currentOrbitCenter = targetBlock.transform.position;
         targetOrbitCenter = targetBlock.transform.position;
         playerController.buildModeOrbitCenter = currentOrbitCenter;
 
-        // Smoothly transition camera distance
-        DOVirtual.Float(
+        // Kill any existing camera distance tween to prevent overlapping lerps
+        if (cameraDistanceTween != null)
+        {
+            cameraDistanceTween.Kill();
+            cameraDistanceTween = null;
+        }
+
+        // Smoothly transition camera distance by animating buildModeOrbitDistance
+        // This is the value that SUPERCharacterAIO uses in UpdateCameraPosition_3rdPerson
+        cameraDistanceTween = DOVirtual.Float(
             savedCameraDistance,
-            playerController.buildModeOrbitDistance,
+            savedBuildModeOrbitDistance,
             0.5f,
             value =>
             {
                 if (playerController != null)
                 {
-                    playerController.maxCameraDistInternal = value;
-                    playerController.currentCameraZ = -value;
+                    // Animate buildModeOrbitDistance - SUPERCharacterAIO will use this
+                    playerController.buildModeOrbitDistance = value;
                 }
             }
         ).SetEase(Ease.OutCubic);
@@ -641,12 +655,20 @@ public class BuildModeController : MonoBehaviour
         isInOrbitMode = false;
         currentSelectedBlock = null;
 
+        // Kill any active camera distance tween to prevent conflicts
+        if (cameraDistanceTween != null)
+        {
+            cameraDistanceTween.Kill();
+            cameraDistanceTween = null;
+        }
+
         if (playerController != null)
         {
             playerController.controllerPaused = false;
             playerController.buildModeOverride = false;
             playerController.maxCameraDistInternal = savedCameraDistance;
             playerController.currentCameraZ = -savedCameraDistance;
+            playerController.buildModeOrbitDistance = savedBuildModeOrbitDistance;
         }
     }
 
@@ -728,4 +750,14 @@ public class BuildModeController : MonoBehaviour
     }
 
     #endregion
+
+    void OnDestroy()
+    {
+        // Kill any active tweens to prevent null reference errors
+        if (cameraDistanceTween != null)
+        {
+            cameraDistanceTween.Kill();
+            cameraDistanceTween = null;
+        }
+    }
 }

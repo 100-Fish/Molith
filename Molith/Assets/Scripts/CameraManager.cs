@@ -15,6 +15,9 @@ public class CameraManager : MonoBehaviour
     private Quaternion targetRotation;
     private bool isLerping = false;
 
+    // Reference to check if build/destruction mode is active
+    private SUPERCharacter.SUPERCharacterAIO playerController;
+
     void Start()
     {
         // Find main camera if not assigned
@@ -33,11 +36,25 @@ public class CameraManager : MonoBehaviour
             targetPosition = mainCamera.transform.position;
             targetRotation = mainCamera.transform.rotation;
         }
+
+        // Get player controller reference
+        if (GameManager.Instance != null)
+        {
+            playerController = GameManager.Instance.playerController;
+        }
     }
 
     void LateUpdate()
     {
         if (mainCamera == null) return;
+
+        // IMPORTANT: Don't interfere with camera when SUPERCharacterAIO is in build mode override
+        // SUPERCharacterAIO handles all camera positioning during build/destruction mode
+        if (playerController != null && playerController.buildModeOverride)
+        {
+            isLerping = false;
+            return;
+        }
 
         // Smooth interpolation if lerping
         if (isLerping)
@@ -55,11 +72,19 @@ public class CameraManager : MonoBehaviour
     }
 
     /// <summary>
+    /// Returns true if camera control should be blocked (build mode active)
+    /// </summary>
+    private bool IsBuildModeActive()
+    {
+        return playerController != null && playerController.buildModeOverride;
+    }
+
+    /// <summary>
     /// Move camera to a position with smooth interpolation
     /// </summary>
     public void MoveTo(Vector3 position, float duration = 0.5f)
     {
-        if (mainCamera == null) return;
+        if (mainCamera == null || IsBuildModeActive()) return;
 
         mainCamera.transform.DOMove(position, duration).SetEase(Ease.InOutQuad);
     }
@@ -69,7 +94,7 @@ public class CameraManager : MonoBehaviour
     /// </summary>
     public void LookAt(Vector3 targetPos, float duration = 0.5f)
     {
-        if (mainCamera == null) return;
+        if (mainCamera == null || IsBuildModeActive()) return;
 
         Vector3 direction = (targetPos - mainCamera.transform.position).normalized;
         Quaternion lookRotation = Quaternion.LookRotation(direction);
@@ -81,7 +106,7 @@ public class CameraManager : MonoBehaviour
     /// </summary>
     public void FocusOn(Vector3 targetPos, Vector3 cameraOffset, float duration = 0.5f)
     {
-        if (mainCamera == null) return;
+        if (mainCamera == null || IsBuildModeActive()) return;
 
         Vector3 finalPosition = targetPos + cameraOffset;
         mainCamera.transform.DOMove(finalPosition, duration).SetEase(Ease.InOutQuad);
@@ -96,7 +121,7 @@ public class CameraManager : MonoBehaviour
     /// </summary>
     public void SetCameraTransform(Vector3 position, Quaternion rotation)
     {
-        if (mainCamera == null) return;
+        if (mainCamera == null || IsBuildModeActive()) return;
 
         mainCamera.transform.position = position;
         mainCamera.transform.rotation = rotation;

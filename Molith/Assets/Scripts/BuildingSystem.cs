@@ -173,12 +173,11 @@ public class BuildingSystem : MonoBehaviour
             raycastLineRenderer.startWidth = raycastLineWidth;
             raycastLineRenderer.endWidth = raycastLineWidth;
             raycastLineRenderer.material = new Material(Shader.Find("Sprites/Default"));
-
-            // Set initial color from GameManager
-            Color initialColor = GameManager.Instance != null ? GameManager.Instance.placementColor : Color.cyan;
-            raycastLineRenderer.startColor = initialColor;
-            raycastLineRenderer.endColor = initialColor;
         }
+
+        // Set initial color from GameManager (for both prefab and programmatic)
+        Color initialColor = GameManager.Instance != null ? GameManager.Instance.placementColor : Color.cyan;
+        SetLineRendererColor(raycastLineRenderer, initialColor);
 
         raycastLineRenderer.enabled = false;
     }
@@ -293,6 +292,12 @@ public class BuildingSystem : MonoBehaviour
             highlightCoroutine = null;
         }
 
+        // Reset line color back to build mode color
+        if (GameManager.Instance != null)
+        {
+            SetLineColor(GameManager.Instance.placementColor);
+        }
+
         // Hide the line when releasing destroy key
         HideRaycastLine();
 
@@ -329,8 +334,11 @@ public class BuildingSystem : MonoBehaviour
 
     IEnumerator HighlightBlocksSequentially()
     {
-        // Wait initial delay before first block
-        yield return new WaitForSeconds(currentHighlightDelay);
+        // Set line to destruction color immediately when entering destroy mode
+        if (GameManager.Instance != null)
+        {
+            SetLineColor(GameManager.Instance.destructionColor);
+        }
 
         int blockIndex = 0;
         bool enteredOrbitMode = false;
@@ -515,6 +523,12 @@ public class BuildingSystem : MonoBehaviour
         }
         destructionLines.Clear();
 
+        // Reset line color back to build mode color
+        if (GameManager.Instance != null)
+        {
+            SetLineColor(GameManager.Instance.placementColor);
+        }
+
         // Hide the line when exiting destruction mode
         HideRaycastLine();
     }
@@ -677,10 +691,21 @@ public class BuildingSystem : MonoBehaviour
 
     public void SetLineColor(Color color)
     {
-        if (raycastLineRenderer != null)
+        SetLineRendererColor(raycastLineRenderer, color);
+    }
+
+    private void SetLineRendererColor(LineRenderer lineRenderer, Color color)
+    {
+        if (lineRenderer != null)
         {
-            raycastLineRenderer.startColor = color;
-            raycastLineRenderer.endColor = color;
+            lineRenderer.startColor = color;
+            lineRenderer.endColor = color;
+
+            // Also update shader property for hologram material
+            if (lineRenderer.material != null)
+            {
+                lineRenderer.material.SetColor("_Color", color);
+            }
         }
     }
 
@@ -766,8 +791,7 @@ public class BuildingSystem : MonoBehaviour
         // Set position count and color from GameManager
         lineRenderer.positionCount = parabolaSegments + 1;
         Color destroyColor = GameManager.Instance != null ? GameManager.Instance.destructionColor : Color.red;
-        lineRenderer.startColor = destroyColor;
-        lineRenderer.endColor = destroyColor;
+        SetLineRendererColor(lineRenderer, destroyColor);
 
         // Calculate positions
         Vector3 startPos = playerBackpack.position;
@@ -1201,8 +1225,7 @@ public class BuildingSystem : MonoBehaviour
 
         // Set color from GameManager
         Color lineColor = GameManager.Instance != null ? GameManager.Instance.placementColor : Color.cyan;
-        activeChainSegment.startColor = lineColor;
-        activeChainSegment.endColor = lineColor;
+        SetLineRendererColor(activeChainSegment, lineColor);
 
         // Store the fixed start position for this segment
         activeSegmentStartPos = startPos;

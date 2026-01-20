@@ -230,6 +230,7 @@ namespace SUPERCharacter
         public bool enableFootstepSounds = true;
         public FootstepTriggeringMode footstepTriggeringMode = FootstepTriggeringMode.calculatedTiming;
         [Range(0.0f, 1.0f)] public float stepTiming = 0.15f;
+        [Range(0.0f, 1.0f)] public float footstepVolumeModulator = 0.25f;
         public List<GroundMaterialProfile> footstepSoundSet = new List<GroundMaterialProfile>();
         bool shouldCalculateFootstepTriggers = true;
         float StepCycle = 0;
@@ -1619,7 +1620,7 @@ namespace SUPERCharacter
                 {
                     AudioClip clip = currentClipSet[Random.Range(0, currentClipSet.Count())];
                     Debug.Log($"[Footstep] Playing clip: {clip.name}");
-                    footstepAudioSource.PlayOneShot(clip, 0.5f);
+                    footstepAudioSource.PlayOneShot(clip, footstepVolumeModulator);
                 }
             }
             else
