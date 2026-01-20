@@ -41,6 +41,7 @@ public class UIManager : MonoBehaviour
     [Tooltip("Text field for camera telemetry (position and rotation)")]
     public TextMeshProUGUI cameraTelemetryText;
 
+
     [Tooltip("Transform of the block counter parent (must have BlockCounterUI component)")]
     public Transform blockCounterTransform;
 
@@ -115,6 +116,7 @@ public class UIManager : MonoBehaviour
         InitializeBlockCounter();
     }
 
+
     void InitializeBlockCounter()
     {
         if (blockCounterUI == null) return;
@@ -155,8 +157,8 @@ public class UIManager : MonoBehaviour
         {
             Vector3 playerPos = playerController.transform.position;
             Vector3 playerRot = playerController.transform.eulerAngles;
-            playerTelemetryText.text = $"POS [{playerPos.x:F2}, {playerPos.y:F2}, {playerPos.z:F2}]\n" +
-                                       $"ROT [{playerRot.x:F1}, {playerRot.y:F1}, {playerRot.z:F1}]";
+            playerTelemetryText.text = $"POS {playerPos.x:F2}, {playerPos.y:F2}, {playerPos.z:F2}\n" +
+                                       $"ROT {playerRot.x:F1}, {playerRot.y:F1}, {playerRot.z:F1}";
         }
 
         // Camera telemetry (position and rotation in one text)
@@ -164,8 +166,8 @@ public class UIManager : MonoBehaviour
         {
             Vector3 camPos = playerController.playerCamera.transform.position;
             Vector3 camRot = playerController.playerCamera.transform.eulerAngles;
-            cameraTelemetryText.text = $"CAM.POS [{camPos.x:F2}, {camPos.y:F2}, {camPos.z:F2}]\n" +
-                                       $"CAM.ROT [{camRot.x:F1}, {camRot.y:F1}, {camRot.z:F1}]";
+            cameraTelemetryText.text = $"CAM.POS {camPos.x:F2}, {camPos.y:F2}, {camPos.z:F2}\n" +
+                                       $"CAM.ROT {camRot.x:F1}, {camRot.y:F1}, {camRot.z:F1}";
         }
 
         // Block count display
@@ -345,30 +347,42 @@ public class UIManager : MonoBehaviour
             if (boxScale.x != 0f) boxSize.x /= boxScale.x;
             if (boxScale.y != 0f) boxSize.y /= boxScale.y;
 
-            // Clamp box size so it doesn't get too close to canvas edges
             RectTransform canvasRect = crosshairBoxImage.canvas?.GetComponent<RectTransform>();
             if (canvasRect != null)
             {
                 Vector2 canvasSize = canvasRect.rect.size;
+
+                // Clamp box size so it doesn't exceed canvas minus margins
                 float maxWidth = (canvasSize.x - crosshairBoxEdgeMargin * 2f) / Mathf.Abs(boxScale.x);
                 float maxHeight = (canvasSize.y - crosshairBoxEdgeMargin * 2f) / Mathf.Abs(boxScale.y);
                 boxSize.x = Mathf.Min(boxSize.x, maxWidth);
                 boxSize.y = Mathf.Min(boxSize.y, maxHeight);
+
+                // Calculate the visual half-size of the box (accounting for scale)
+                float visualHalfWidth = (boxSize.x * Mathf.Abs(boxScale.x)) / 2f;
+                float visualHalfHeight = (boxSize.y * Mathf.Abs(boxScale.y)) / 2f;
+
+                // Convert WASD center to local canvas position
+                Vector2 localPoint;
+                RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                    canvasRect, wasdCenter, null, out localPoint);
+
+                // Clamp position so box stays within canvas bounds (with margin)
+                float minX = -canvasSize.x / 2f + crosshairBoxEdgeMargin + visualHalfWidth;
+                float maxX = canvasSize.x / 2f - crosshairBoxEdgeMargin - visualHalfWidth;
+                float minY = -canvasSize.y / 2f + crosshairBoxEdgeMargin + visualHalfHeight;
+                float maxY = canvasSize.y / 2f - crosshairBoxEdgeMargin - visualHalfHeight;
+
+                localPoint.x = Mathf.Clamp(localPoint.x, minX, maxX);
+                localPoint.y = Mathf.Clamp(localPoint.y, minY, maxY);
+
+                crosshairBoxImage.rectTransform.anchoredPosition = localPoint;
             }
 
             crosshairBoxSizeTween?.Kill();
             crosshairBoxSizeTween = crosshairBoxImage.rectTransform
                 .DOSizeDelta(boxSize, crosshairTransitionDuration)
                 .SetEase(Ease.OutCubic);
-
-            // Position box at WASD center
-            if (canvasRect != null)
-            {
-                Vector2 localPoint;
-                RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                    canvasRect, wasdCenter, null, out localPoint);
-                crosshairBoxImage.rectTransform.anchoredPosition = localPoint;
-            }
         }
     }
 
