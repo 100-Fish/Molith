@@ -71,12 +71,10 @@ crashlytics-build.properties
 
 ## Keep ArtAssets
 !ArtAssets/
-/BubbleFish/ProjectSettings/ProjectVersion.txt
-/BubbleFish/Packages/manifest.json
-/BubbleFish/Packages/packages-lock.json
 
 # VSCode specific
 .vscode/
+.claude/
 
 # OS generated
 .DS_Store
