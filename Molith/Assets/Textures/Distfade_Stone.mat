@@ -66,8 +66,8 @@ Material:
     - _DetailNormalMapScale: 1
     - _DitherSize: 1
     - _DstBlend: 0
-    - _FadeDis: 100
-    - _FadeStart: 50
+    - _FadeDis: 400
+    - _FadeStart: 200
     - _GlossMapScale: 1
     - _Glossiness: 0.5
     - _GlossyReflections: 1
