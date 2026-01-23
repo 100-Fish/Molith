@@ -1,7 +1,4 @@
-<img src="https://github.com/user-attachments/assets/421260c3-8aa2-4a16-b421-8e32c0920985" 
-  alt="Molith Banner"
-  width="260"
-  style="display:block; margin-bottom:6px;"/>
+<img src="https://raw.githubusercontent.com/100-Fish/branding-assets/main/project_thumbnails/molith_thumbnail.png" width="260" alt="Molith">
   
 Molith is a 3D game made in the Unity engine.
 
