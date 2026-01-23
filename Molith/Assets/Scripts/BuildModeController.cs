@@ -125,7 +125,8 @@ public class BuildModeController : MonoBehaviour
             return;
         }
 
-        // Handle WASD placement with delay
+        // DISABLED FOR CRYSTAL MODE - No sequential WASD placement
+        /*
         if (Time.time - lastPlacementTime > blockPlacementDelay)
         {
             if (Input.GetKeyDown(KeyCode.W))
@@ -137,6 +138,7 @@ public class BuildModeController : MonoBehaviour
             else if (Input.GetKeyDown(KeyCode.D))
                 PlaceBlockInDirection(KeyCode.D);
         }
+        */
     }
 
     /// <summary>
@@ -243,6 +245,10 @@ public class BuildModeController : MonoBehaviour
 
     private void PlaceBlockInDirection(KeyCode key)
     {
+        // DISABLED FOR CRYSTAL MODE
+        return;
+
+        #pragma warning disable CS0162 // Unreachable code detected
         if (GameManager.Instance == null) return;
         if (currentSelectedBlock == null || GameManager.Instance.arrowSystem == null) return;
 
@@ -407,6 +413,7 @@ public class BuildModeController : MonoBehaviour
         }
 
         lastPlacementTime = Time.time;
+        #pragma warning restore CS0162
     }
 
     private void SelectBlock(GameObject newBlock)

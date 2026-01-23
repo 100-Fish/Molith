@@ -94,6 +94,40 @@ public class BuildingSystem : MonoBehaviour
     private Vector3 activeSegmentEndpoint;
     private Tweener activeSegmentTween;
 
+    [Header("Crystal Growth Settings")]
+    [Tooltip("Maximum crystal growth length")]
+    public float maxCrystalLength = 10f;
+
+    [Tooltip("Minimum crystal radius")]
+    public float minCrystalRadius = 0.1f;
+
+    [Tooltip("Maximum crystal radius")]
+    public float maxCrystalRadius = 0.5f;
+
+    [Tooltip("Number of rays to cast when calculating available space for crystal radius")]
+    public int radiusProbeCount = 8;
+
+    [Tooltip("Growth animation curve (X=time 0-1, Y=progress 0-1). Should look like a log curve.")]
+    public AnimationCurve crystalGrowthCurve = new AnimationCurve(
+        new Keyframe(0f, 0f, 4f, 4f),       // Fast start
+        new Keyframe(0.5f, 0.8f, 0.5f, 0.5f), // Slowing
+        new Keyframe(1f, 1f, 0.1f, 0.1f)    // Tapers off
+    );
+
+    [Tooltip("Time in seconds to reach full crystal length")]
+    public float crystalGrowthDuration = 2f;
+
+    // Crystal state
+    private Vector3 crystalBasePosition;
+    private Vector3 crystalGrowthNormal;
+    private Quaternion crystalRotation;
+    private float crystalGrowthStartTime;
+    private bool isCrystalGrowing = false;
+    private float currentCrystalRadius;      // Calculated radius based on available space
+    private float currentMaxCrystalLength;   // Max length before hitting obstacle
+    private float currentCrystalLength;      // Current growth length (stops if collision detected)
+    private bool crystalCollisionStopped = false; // Whether growth stopped due to collision
+
     [Header("FIFO Destruction Settings")]
     [Tooltip("Initial delay before first block starts highlighting (seconds)")]
     public float initialHighlightDelay = 0.5f;
@@ -211,20 +245,43 @@ public class BuildingSystem : MonoBehaviour
         if (isDestructionMode)
             return;
 
+        // === CRYSTAL GROWTH FLOW ===
+
+        // KeyDown: Start crystal at raycast hit point
         if (Input.GetKeyDown(placeKey))
         {
-            isPlacementMode = true;
-            CreatePreviewBlock();
+            Camera cam = GameManager.Instance.playerController.playerCamera;
+            Vector3 rayOrigin = cam.transform.position;
+            Vector3 rayDirection = cam.transform.forward;
+
+            if (Physics.Raycast(rayOrigin, rayDirection, out RaycastHit hit,
+                maxRaycastDistance, placementRaycastLayers))
+            {
+                isPlacementMode = true;
+                isCrystalGrowing = true;
+                crystalGrowthStartTime = Time.time;
+
+                // Store crystal anchor and orientation
+                crystalBasePosition = hit.point;
+                crystalGrowthNormal = hit.normal;
+                crystalRotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
+
+                CreateCrystalPreview();
+                lastRaycastHit = true;
+            }
         }
 
-        if (Input.GetKey(placeKey) && isPlacementMode)
+        // Key Held: Grow crystal
+        if (Input.GetKey(placeKey) && isCrystalGrowing)
         {
-            UpdatePreviewPosition();
+            UpdateCrystalGrowth();
         }
 
-        if (Input.GetKeyUp(placeKey) && isPlacementMode)
+        // KeyUp: Finalize crystal
+        if (Input.GetKeyUp(placeKey) && isCrystalGrowing)
         {
-            PlaceBlock();
+            PlaceCrystal();
+            isCrystalGrowing = false;
             isPlacementMode = false;
         }
     }
@@ -631,6 +688,219 @@ public class BuildingSystem : MonoBehaviour
         }
     }
 
+    void CreateCrystalPreview()
+    {
+        // Calculate available radius at contact point
+        currentCrystalRadius = CalculateAvailableRadius(crystalBasePosition, crystalGrowthNormal);
+
+        // Calculate max length before hitting obstacle
+        currentMaxCrystalLength = CalculateMaxGrowthLength(crystalBasePosition, crystalGrowthNormal);
+
+        // Reset growth state
+        currentCrystalLength = 0.1f;
+        crystalCollisionStopped = false;
+
+        // Create cylinder primitive for crystal
+        currentPreview = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        currentPreview.name = "CrystalPreview";
+
+        // Disable collider on preview
+        var collider = currentPreview.GetComponent<Collider>();
+        if (collider != null) collider.enabled = false;
+
+        // Apply preview material
+        var renderer = currentPreview.GetComponent<MeshRenderer>();
+        if (renderer != null && previewMaterialInstance != null)
+            renderer.material = previewMaterialInstance;
+
+        // Initialize at base position with minimal length
+        currentPreview.transform.position = crystalBasePosition;
+        currentPreview.transform.rotation = crystalRotation;
+        currentPreview.transform.localScale = new Vector3(currentCrystalRadius, 0.01f, currentCrystalRadius);
+
+        // Show and position line renderer
+        if (showRaycastLine && raycastLineRenderer != null)
+        {
+            raycastLineRenderer.enabled = true;
+            SetLineRendererColor(raycastLineRenderer, GameManager.Instance.placementColor);
+        }
+    }
+
+    /// <summary>
+    /// Calculate available radius at contact point by casting rays radially along the surface.
+    /// Returns the maximum radius that fits without overlapping other geometry.
+    /// </summary>
+    float CalculateAvailableRadius(Vector3 contactPoint, Vector3 surfaceNormal)
+    {
+        // Create a coordinate system on the surface plane
+        Vector3 tangent = Vector3.Cross(surfaceNormal, Vector3.up);
+        if (tangent.sqrMagnitude < 0.001f)
+        {
+            // Surface is horizontal, use forward instead
+            tangent = Vector3.Cross(surfaceNormal, Vector3.forward);
+        }
+        tangent.Normalize();
+        Vector3 bitangent = Vector3.Cross(surfaceNormal, tangent).normalized;
+
+        float minDistance = maxCrystalRadius;
+
+        // Cast rays radially from contact point along the surface
+        for (int i = 0; i < radiusProbeCount; i++)
+        {
+            float angle = (i / (float)radiusProbeCount) * 360f * Mathf.Deg2Rad;
+            Vector3 probeDirection = tangent * Mathf.Cos(angle) + bitangent * Mathf.Sin(angle);
+
+            // Offset slightly along normal to avoid self-intersection
+            Vector3 probeOrigin = contactPoint + surfaceNormal * 0.01f;
+
+            if (Physics.Raycast(probeOrigin, probeDirection, out RaycastHit hit, maxCrystalRadius, placementRaycastLayers))
+            {
+                minDistance = Mathf.Min(minDistance, hit.distance);
+            }
+        }
+
+        // Clamp between min and max radius
+        return Mathf.Clamp(minDistance, minCrystalRadius, maxCrystalRadius);
+    }
+
+    /// <summary>
+    /// Calculate maximum growth length before hitting an obstacle.
+    /// </summary>
+    float CalculateMaxGrowthLength(Vector3 basePosition, Vector3 growthDirection)
+    {
+        // Cast ray along growth direction to find obstacles
+        if (Physics.Raycast(basePosition + growthDirection * 0.01f, growthDirection, out RaycastHit hit, maxCrystalLength, placementRaycastLayers))
+        {
+            return hit.distance;
+        }
+        return maxCrystalLength;
+    }
+
+    void UpdateCrystalGrowth()
+    {
+        if (currentPreview == null) return;
+
+        // If already stopped due to collision, don't update length
+        if (!crystalCollisionStopped)
+        {
+            // Calculate growth progress using animation curve
+            float elapsedTime = Time.time - crystalGrowthStartTime;
+            float normalizedTime = Mathf.Clamp01(elapsedTime / crystalGrowthDuration);
+            float growthProgress = crystalGrowthCurve.Evaluate(normalizedTime);
+
+            // Calculate target length based on curve progress
+            float targetLength = growthProgress * maxCrystalLength;
+            targetLength = Mathf.Max(targetLength, 0.1f); // Minimum visible length
+
+            // Check for collision at the new length
+            if (targetLength > currentCrystalLength)
+            {
+                // Raycast from current tip to see if we'd hit something
+                Vector3 currentTip = crystalBasePosition + crystalGrowthNormal * currentCrystalLength;
+                float growthDelta = targetLength - currentCrystalLength;
+
+                if (Physics.Raycast(currentTip, crystalGrowthNormal, out RaycastHit hit, growthDelta, placementRaycastLayers))
+                {
+                    // Hit something - stop at the collision point
+                    currentCrystalLength += hit.distance;
+                    crystalCollisionStopped = true;
+                }
+                else
+                {
+                    // No collision - grow to target length (capped by pre-calculated max)
+                    currentCrystalLength = Mathf.Min(targetLength, currentMaxCrystalLength);
+
+                    // Check if we've reached the pre-calculated max
+                    if (currentCrystalLength >= currentMaxCrystalLength)
+                    {
+                        crystalCollisionStopped = true;
+                    }
+                }
+            }
+        }
+
+        // Unity cylinder: height=2 units, pivot at center
+        // Scale Y = length / 2, position offset = length / 2 along normal
+        float scaleY = currentCrystalLength / 2f;
+        currentPreview.transform.localScale = new Vector3(currentCrystalRadius, scaleY, currentCrystalRadius);
+        currentPreview.transform.position = crystalBasePosition + crystalGrowthNormal * (currentCrystalLength / 2f);
+
+        // Update line renderer (from backpack to crystal tip)
+        if (showRaycastLine && raycastLineRenderer != null && playerBackpack != null)
+        {
+            Vector3 crystalTip = crystalBasePosition + crystalGrowthNormal * currentCrystalLength;
+            DrawParabola(playerBackpack.position, crystalTip, true);
+        }
+    }
+
+    void PlaceCrystal()
+    {
+        if (currentPreview == null || !lastRaycastHit)
+        {
+            if (currentPreview != null)
+            {
+                Destroy(currentPreview);
+                currentPreview = null;
+            }
+            if (raycastLineRenderer != null)
+                raycastLineRenderer.enabled = false;
+            return;
+        }
+
+        // Check block limit
+        if (placedBlocks.Count >= maxBlocks)
+        {
+            Debug.LogWarning("Maximum block limit reached!");
+            Destroy(currentPreview);
+            currentPreview = null;
+            if (raycastLineRenderer != null)
+                raycastLineRenderer.enabled = false;
+            return;
+        }
+
+        // Create final crystal at current preview state
+        GameObject crystal = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        crystal.name = "Crystal";
+        crystal.transform.position = currentPreview.transform.position;
+        crystal.transform.rotation = currentPreview.transform.rotation;
+        crystal.transform.localScale = currentPreview.transform.localScale;
+
+        // Enable collider
+        var collider = crystal.GetComponent<Collider>();
+        if (collider != null) collider.enabled = true;
+
+        // Apply final material (copy from cubePrefab or use default)
+        var renderer = crystal.GetComponent<MeshRenderer>();
+        if (renderer != null && cubePrefab != null)
+        {
+            var prefabRenderer = cubePrefab.GetComponentInChildren<MeshRenderer>();
+            if (prefabRenderer != null)
+                renderer.materials = prefabRenderer.sharedMaterials;
+        }
+
+        // Track the crystal
+        placedBlocks.Add(crystal);
+        fifoBlockList.Add(crystal);
+
+        // Play placement animation (punch scale effect)
+        Vector3 targetScale = crystal.transform.localScale;
+        crystal.transform.DOPunchScale(targetScale * 0.1f, placementDuration, 1, 0.5f);
+
+        // Play sound
+        AudioEventDispatcher.PlaySound(SoundID.BlockPlace);
+
+        // Clean up preview
+        Destroy(currentPreview);
+        currentPreview = null;
+
+        // Hide line renderer
+        if (raycastLineRenderer != null)
+            raycastLineRenderer.enabled = false;
+
+        // NOTE: Scaffolding generation disabled for crystal mode
+        // NOTE: Build mode (WASD placement) disabled for crystal mode
+    }
+
     void DrawParabola(Vector3 start, Vector3 end, bool useHorizontalCurve = false)
     {
         if (raycastLineRenderer == null) return;
@@ -1010,17 +1280,16 @@ public class BuildingSystem : MonoBehaviour
             GameManager.Instance.adjacencyGrid.RegisterBlock(newBlock, roundedPosition);
         }
 
-        // Generate scaffolding for this platform BEFORE entering build mode
-        // This ensures scaffolding is ready when hologram materials are applied
-        ScaffoldingManager scaffoldingManager = newBlock.AddComponent<ScaffoldingManager>();
-        GameObject scaffoldPrefab = scaffoldingPrefab != null ? scaffoldingPrefab : cubePrefab;
-        scaffoldingManager.Initialize(newBlock, scaffoldPrefab, platformScale, 0f);
+        // DISABLED FOR CRYSTAL MODE - No scaffolding
+        // ScaffoldingManager scaffoldingManager = newBlock.AddComponent<ScaffoldingManager>();
+        // GameObject scaffoldPrefab = scaffoldingPrefab != null ? scaffoldingPrefab : cubePrefab;
+        // scaffoldingManager.Initialize(newBlock, scaffoldPrefab, platformScale, 0f);
 
-        // Trigger build mode after placing first block (and after scaffolding is created)
-        if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
-        {
-            GameManager.Instance.buildModeController.EnterBuildMode(newBlock);
-        }
+        // DISABLED FOR CRYSTAL MODE - No build mode after placement
+        // if (GameManager.Instance != null && GameManager.Instance.buildModeController != null)
+        // {
+        //     GameManager.Instance.buildModeController.EnterBuildMode(newBlock);
+        // }
     }
 
     void CreateDefaultHologramMaterial()
