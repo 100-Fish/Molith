@@ -119,7 +119,8 @@ public class BuildingSystem : MonoBehaviour
 
     // Crystal state
     private Vector3 crystalBasePosition;
-    private Vector3 crystalGrowthNormal;
+    private Vector3 crystalSurfaceNormal;     // Normal of the surface at contact point
+    private Vector3 crystalGrowthDirection;   // Tangent direction toward player (lies on surface plane)
     private Quaternion crystalRotation;
     private float crystalGrowthStartTime;
     private bool isCrystalGrowing = false;
@@ -263,8 +264,23 @@ public class BuildingSystem : MonoBehaviour
 
                 // Store crystal anchor and orientation
                 crystalBasePosition = hit.point;
-                crystalGrowthNormal = hit.normal;
-                crystalRotation = Quaternion.FromToRotation(Vector3.up, hit.normal);
+                crystalSurfaceNormal = hit.normal;
+
+                // Calculate tangent growth direction: project player-to-hitpoint vector onto surface plane
+                Vector3 toPlayer = (rayOrigin - hit.point).normalized;
+                // Project onto surface plane by removing the normal component
+                crystalGrowthDirection = (toPlayer - Vector3.Dot(toPlayer, hit.normal) * hit.normal).normalized;
+
+                // If projection is too small (player looking straight down at surface), pick arbitrary tangent
+                if (crystalGrowthDirection.sqrMagnitude < 0.001f)
+                {
+                    crystalGrowthDirection = Vector3.Cross(hit.normal, Vector3.up).normalized;
+                    if (crystalGrowthDirection.sqrMagnitude < 0.001f)
+                        crystalGrowthDirection = Vector3.Cross(hit.normal, Vector3.forward).normalized;
+                }
+
+                // Rotation: align cylinder's Y-axis (up) with growth direction
+                crystalRotation = Quaternion.FromToRotation(Vector3.up, crystalGrowthDirection);
 
                 CreateCrystalPreview();
                 lastRaycastHit = true;
@@ -690,11 +706,11 @@ public class BuildingSystem : MonoBehaviour
 
     void CreateCrystalPreview()
     {
-        // Calculate available radius at contact point
-        currentCrystalRadius = CalculateAvailableRadius(crystalBasePosition, crystalGrowthNormal);
+        // Calculate available radius at contact point (uses surface normal for radial probing)
+        currentCrystalRadius = CalculateAvailableRadius(crystalBasePosition, crystalSurfaceNormal);
 
-        // Calculate max length before hitting obstacle
-        currentMaxCrystalLength = CalculateMaxGrowthLength(crystalBasePosition, crystalGrowthNormal);
+        // Calculate max length before hitting obstacle (uses tangent growth direction)
+        currentMaxCrystalLength = CalculateMaxGrowthLength(crystalBasePosition, crystalGrowthDirection);
 
         // Reset growth state
         currentCrystalLength = 0.1f;
@@ -796,10 +812,10 @@ public class BuildingSystem : MonoBehaviour
             if (targetLength > currentCrystalLength)
             {
                 // Raycast from current tip to see if we'd hit something
-                Vector3 currentTip = crystalBasePosition + crystalGrowthNormal * currentCrystalLength;
+                Vector3 currentTip = crystalBasePosition + crystalGrowthDirection * currentCrystalLength;
                 float growthDelta = targetLength - currentCrystalLength;
 
-                if (Physics.Raycast(currentTip, crystalGrowthNormal, out RaycastHit hit, growthDelta, placementRaycastLayers))
+                if (Physics.Raycast(currentTip, crystalGrowthDirection, out RaycastHit hit, growthDelta, placementRaycastLayers))
                 {
                     // Hit something - stop at the collision point
                     currentCrystalLength += hit.distance;
@@ -820,15 +836,15 @@ public class BuildingSystem : MonoBehaviour
         }
 
         // Unity cylinder: height=2 units, pivot at center
-        // Scale Y = length / 2, position offset = length / 2 along normal
+        // Scale Y = length / 2, position offset = length / 2 along growth direction
         float scaleY = currentCrystalLength / 2f;
         currentPreview.transform.localScale = new Vector3(currentCrystalRadius, scaleY, currentCrystalRadius);
-        currentPreview.transform.position = crystalBasePosition + crystalGrowthNormal * (currentCrystalLength / 2f);
+        currentPreview.transform.position = crystalBasePosition + crystalGrowthDirection * (currentCrystalLength / 2f);
 
         // Update line renderer (from backpack to crystal tip)
         if (showRaycastLine && raycastLineRenderer != null && playerBackpack != null)
         {
-            Vector3 crystalTip = crystalBasePosition + crystalGrowthNormal * currentCrystalLength;
+            Vector3 crystalTip = crystalBasePosition + crystalGrowthDirection * currentCrystalLength;
             DrawParabola(playerBackpack.position, crystalTip, true);
         }
     }
