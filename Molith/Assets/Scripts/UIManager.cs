@@ -22,6 +22,12 @@ public class KeyIndicator
 
     [HideInInspector]
     public Tweener scaleTween;
+
+    [HideInInspector]
+    public Tweener alphaTween;
+
+    [HideInInspector]
+    public bool isAvailable = true;
 }
 
 [ExecuteAlways]
@@ -55,6 +61,13 @@ public class UIManager : MonoBehaviour
     public float keyPressedScale = 1.2f;
     [Tooltip("Scale when key is released")]
     public float keyReleasedScale = 1.0f;
+
+    [Tooltip("Duration of key fade in/out when availability changes")]
+    public float keyFadeDuration = 0.2f;
+
+    [Tooltip("Alpha value for unavailable keys (0 = fully hidden)")]
+    [Range(0f, 1f)]
+    public float unavailableKeyAlpha = 0f;
 
     [Header("Telemetry UI")]
     [Tooltip("Text field for player telemetry (position and rotation)")]
@@ -147,6 +160,34 @@ public class UIManager : MonoBehaviour
 
         // Initialize block counter with BuildingSystem values
         InitializeBlockCounter();
+
+        // Set initial key visibility (e.g. Q starts hidden since no crystals exist yet)
+        InitializeKeyVisibility();
+    }
+
+    void InitializeKeyVisibility()
+    {
+        var buildingSystem = GameManager.Instance?.buildingSystem;
+        if (buildingSystem == null) return;
+
+        bool hasCrystals = buildingSystem.CurrentBlockCount > 0;
+
+        foreach (var indicator in keyIndicators)
+        {
+            if (indicator.keyImage == null) continue;
+
+            bool startAvailable = true;
+
+            if (indicator.key == buildingSystem.destroyKey)
+                startAvailable = hasCrystals; // Q hidden at start (no crystals)
+            else if (indicator.key == buildingSystem.placeKey)
+                startAvailable = false; // E hidden until looking at placeable surface
+
+            indicator.isAvailable = startAvailable;
+            Color c = indicator.keyImage.color;
+            c.a = startAvailable ? 1f : unavailableKeyAlpha;
+            indicator.keyImage.color = c;
+        }
     }
 
     void OnValidate()
@@ -241,6 +282,7 @@ public class UIManager : MonoBehaviour
         UpdateMaxHeightDisplay();
         UpdateUIState();
         UpdateKeyIndicators();
+        UpdateKeyVisibility();
 
         if (currentState == UIState.BuildMode)
             UpdateBuildModeCrosshair();
@@ -322,6 +364,66 @@ public class UIManager : MonoBehaviour
             {
                 indicator.wasPressed = isPressed;
                 indicator.keyImage.sprite = isPressed ? activeSprite : inactiveSprite;
+            }
+        }
+    }
+
+    void UpdateKeyVisibility()
+    {
+        var buildingSystem = GameManager.Instance?.buildingSystem;
+        if (buildingSystem == null) return;
+
+        bool isBuilding = buildingSystem.IsPlacementActive;
+        bool isDestroying = buildingSystem.IsDestructionActive;
+        bool hasCrystals = buildingSystem.CurrentBlockCount > 0;
+        bool lookingAtPlaceable = buildingSystem.IsLookingAtPlaceableSurface();
+
+        foreach (var indicator in keyIndicators)
+        {
+            if (indicator.keyImage == null) continue;
+
+            bool shouldBeAvailable;
+
+            if (isBuilding)
+            {
+                // Building mode: only E visible
+                shouldBeAvailable = (indicator.key == buildingSystem.placeKey);
+            }
+            else if (isDestroying)
+            {
+                // Destroy mode: only Q visible
+                shouldBeAvailable = (indicator.key == buildingSystem.destroyKey);
+            }
+            else
+            {
+                // Default mode
+                if (indicator.key == buildingSystem.destroyKey)
+                {
+                    // Q only visible if crystals are placed
+                    shouldBeAvailable = hasCrystals;
+                }
+                else if (indicator.key == buildingSystem.placeKey)
+                {
+                    // E only visible if looking at placeable surface
+                    shouldBeAvailable = lookingAtPlaceable;
+                }
+                else
+                {
+                    // All other keys visible in default
+                    shouldBeAvailable = true;
+                }
+            }
+
+            // Fade if availability changed
+            if (shouldBeAvailable != indicator.isAvailable)
+            {
+                indicator.isAvailable = shouldBeAvailable;
+                float targetAlpha = shouldBeAvailable ? 1f : unavailableKeyAlpha;
+
+                indicator.alphaTween?.Kill();
+                indicator.alphaTween = indicator.keyImage
+                    .DOFade(targetAlpha, keyFadeDuration)
+                    .SetEase(Ease.OutQuad);
             }
         }
     }
@@ -620,5 +722,9 @@ public class UIManager : MonoBehaviour
         crosshairPositionTween?.Kill();
         crosshairBoxSizeTween?.Kill();
         crosshairBoxPositionTween?.Kill();
+
+        // Kill key alpha tweens
+        foreach (var indicator in keyIndicators)
+            indicator.alphaTween?.Kill();
     }
 }

@@ -616,7 +616,7 @@ public class BuildModeController : MonoBehaviour
         }
 
         // Freeze player movement but allow camera orbit
-        playerController.controllerPaused = true;
+        playerController.PausePlayer(PauseModes.FreezeInPlace);
         playerController.enableCameraControl = true;
         playerController.buildModeOverride = true;
 
@@ -671,7 +671,9 @@ public class BuildModeController : MonoBehaviour
 
         if (playerController != null)
         {
-            playerController.controllerPaused = false;
+            // Use UnpausePlayer to properly restore rigidbody constraints
+            // (controllerPaused = false alone does not restore FreezeAll → FreezeRotation)
+            playerController.UnpausePlayer();
             playerController.buildModeOverride = false;
             playerController.maxCameraDistInternal = savedCameraDistance;
             playerController.currentCameraZ = -savedCameraDistance;
